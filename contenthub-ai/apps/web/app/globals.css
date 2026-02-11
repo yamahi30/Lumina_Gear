@@ -1,0 +1,65 @@
+/* Tailwind CSS 4.x - 新形式 */
+@import "tailwindcss";
+
+/* カスタムCSS変数 */
+:root {
+  --background: 250 250 250;
+  --foreground: 23 23 23;
+  --card: 255 255 255;
+  --card-foreground: 23 23 23;
+  --primary: 99 102 241;
+  --primary-foreground: 255 255 255;
+  --secondary: 243 244 246;
+  --secondary-foreground: 23 23 23;
+  --muted: 243 244 246;
+  --muted-foreground: 115 115 115;
+  --accent: 243 244 246;
+  --accent-foreground: 23 23 23;
+  --destructive: 239 68 68;
+  --destructive-foreground: 255 255 255;
+  --border: 229 231 235;
+  --input: 229 231 235;
+  --ring: 99 102 241;
+  --radius: 0.75rem;
+}
+
+/* ベーススタイル */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: linear-gradient(135deg, rgb(var(--background)) 0%, rgb(248 250 252) 100%);
+  color: rgb(var(--foreground));
+  min-height: 100vh;
+}
+
+/* Apple HIG準拠: 純白・純黒を避ける */
+* {
+  border-color: rgb(var(--border) / 0.3);
+}
+
+/* フォーカススタイル */
+*:focus-visible {
+  outline: 2px solid rgb(var(--ring));
+  outline-offset: 2px;
+}
+
+/* スクロールバーのカスタマイズ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--muted-foreground) / 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--muted-foreground) / 0.5);
+}
