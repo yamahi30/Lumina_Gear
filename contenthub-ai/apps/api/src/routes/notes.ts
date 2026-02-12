@@ -1,8 +1,40 @@
 import { Router } from 'express';
+import fs from 'fs/promises';
+import path from 'path';
 import type { NoteIdea, NoteIdeasData, ApiResponse } from '@contenthub/types';
-import { generateId, formatMonth } from '@contenthub/utils';
+import { generateId } from '@contenthub/utils';
 
 export const notesRouter = Router();
+
+// 保存ディレクトリ
+const NOTE_IDEAS_DIR = path.resolve(process.cwd(), '../../data/note-ideas');
+
+// ディレクトリ確保
+async function ensureNoteIdeasDir() {
+  try {
+    await fs.mkdir(NOTE_IDEAS_DIR, { recursive: true });
+  } catch {
+    // 既存の場合は無視
+  }
+}
+
+// 記事案を読み込む
+async function loadNoteIdeas(month: string): Promise<NoteIdeasData | null> {
+  const filePath = path.join(NOTE_IDEAS_DIR, `${month}.json`);
+  try {
+    const content = await fs.readFile(filePath, 'utf-8');
+    return JSON.parse(content) as NoteIdeasData;
+  } catch {
+    return null;
+  }
+}
+
+// 記事案を保存
+async function saveNoteIdeas(data: NoteIdeasData): Promise<void> {
+  await ensureNoteIdeasDir();
+  const filePath = path.join(NOTE_IDEAS_DIR, `${data.month}.json`);
+  await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+}
 
 /**
  * NOTE記事案生成（1ヶ月分）
@@ -40,9 +72,8 @@ notesRouter.post('/generate-ideas', async (req, res) => {
       ideas,
     };
 
-    // TODO: Google Driveに保存
-    // const driveService = new GoogleDriveService();
-    // await driveService.saveNoteIdeas(ideasData);
+    // ファイルに保存
+    await saveNoteIdeas(ideasData);
 
     const response: ApiResponse<NoteIdeasData> = {
       status: 'success',
@@ -123,19 +154,103 @@ notesRouter.get('/ideas/:month', async (req, res) => {
   try {
     const { month } = req.params;
 
-    // TODO: Google Driveから取得
-    // const driveService = new GoogleDriveService();
-    // const ideas = await driveService.loadNoteIdeas(month);
+    const ideasData = await loadNoteIdeas(month);
 
     res.json({
       status: 'success',
-      data: null, // TODO: 実際のアイデアデータ
+      data: ideasData,
     });
   } catch (error) {
     console.error('Get note ideas error:', error);
     res.status(500).json({
       status: 'error',
       error: '取得に失敗しました',
+    });
+  }
+});
+
+/**
+ * NOTE記事案を更新（承認・編集など）
+ * PUT /api/notes/ideas/:month/:id
+ */
+notesRouter.put('/ideas/:month/:id', async (req, res) => {
+  try {
+    const { month, id } = req.params;
+    const updates = req.body as Partial<NoteIdea>;
+
+    const ideasData = await loadNoteIdeas(month);
+    if (!ideasData) {
+      return res.status(404).json({
+        status: 'error',
+        error: '記事案が見つかりません',
+      });
+    }
+
+    const ideaIndex = ideasData.ideas.findIndex((idea) => idea.id === id);
+    if (ideaIndex === -1) {
+      return res.status(404).json({
+        status: 'error',
+        error: '記事案が見つかりません',
+      });
+    }
+
+    // 更新
+    ideasData.ideas[ideaIndex] = {
+      ...ideasData.ideas[ideaIndex],
+      ...updates,
+    };
+
+    await saveNoteIdeas(ideasData);
+
+    res.json({
+      status: 'success',
+      data: ideasData.ideas[ideaIndex],
+    });
+  } catch (error) {
+    console.error('Update note idea error:', error);
+    res.status(500).json({
+      status: 'error',
+      error: '更新に失敗しました',
+    });
+  }
+});
+
+/**
+ * NOTE記事案を削除
+ * DELETE /api/notes/ideas/:month/:id
+ */
+notesRouter.delete('/ideas/:month/:id', async (req, res) => {
+  try {
+    const { month, id } = req.params;
+
+    const ideasData = await loadNoteIdeas(month);
+    if (!ideasData) {
+      return res.status(404).json({
+        status: 'error',
+        error: '記事案が見つかりません',
+      });
+    }
+
+    const filteredIdeas = ideasData.ideas.filter((idea) => idea.id !== id);
+    if (filteredIdeas.length === ideasData.ideas.length) {
+      return res.status(404).json({
+        status: 'error',
+        error: '記事案が見つかりません',
+      });
+    }
+
+    ideasData.ideas = filteredIdeas;
+    await saveNoteIdeas(ideasData);
+
+    res.json({
+      status: 'success',
+      data: { message: '削除しました' },
+    });
+  } catch (error) {
+    console.error('Delete note idea error:', error);
+    res.status(500).json({
+      status: 'error',
+      error: '削除に失敗しました',
     });
   }
 });

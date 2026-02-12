@@ -2,9 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import path from 'path';
 
-// 環境変数の読み込み
+// 環境変数の読み込み（カレントディレクトリの.envを読み込む）
+// tsx実行時はapps/apiディレクトリから実行される
 dotenv.config();
+// 念のためapps/api/.envも試行
+dotenv.config({ path: path.join(process.cwd(), '.env') });
+
+// 設定
+import { logApiMode } from './config';
 
 // ルートのインポート
 import { authRouter } from './routes/auth';
@@ -48,6 +55,7 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 // サーバー起動
 app.listen(PORT, () => {
   console.log(`🚀 API server running on http://localhost:${PORT}`);
+  logApiMode();
 });
 
 export default app;

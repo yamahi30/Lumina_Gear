@@ -1,0 +1,77 @@
+{
+  "month": "2026-02",
+  "ideas": [
+    {
+      "id": "1770871263217_hoge557",
+      "publish_date": "2026-02-03",
+      "type": "free_no_affiliate",
+      "title": "HSPエンジニアのための○○術 1",
+      "summary": "HSPあるあるの悩みに共感し、具体的な解決策を提示する記事",
+      "status": "approved"
+    },
+    {
+      "id": "1770871263217_0dgxy40",
+      "publish_date": "2026-02-10",
+      "type": "free_with_affiliate",
+      "title": "未経験からエンジニアになる方法 1",
+      "summary": "IT転職のノウハウを提供しつつ、スクールへ自然に誘導",
+      "status": "pending",
+      "affiliate_info": {
+        "category": "ITスクール",
+        "name": "TechAcademy"
+      }
+    },
+    {
+      "id": "1770871263217_i93fakn",
+      "publish_date": "2026-02-17",
+      "type": "free_with_affiliate",
+      "title": "未経験からエンジニアになる方法 2",
+      "summary": "IT転職のノウハウを提供しつつ、スクールへ自然に誘導",
+      "status": "pending",
+      "affiliate_info": {
+        "category": "ITスクール",
+        "name": "TechAcademy"
+      }
+    },
+    {
+      "id": "1770871263217_l9qsq4y",
+      "publish_date": "2026-02-24",
+      "type": "membership",
+      "title": "【メンバー限定】今週のAI活用Q&A 1",
+      "summary": "メンバーからの質問に回答する限定コンテンツ",
+      "status": "pending"
+    },
+    {
+      "id": "1770871263217_q6v0jiy",
+      "publish_date": "2026-02-28",
+      "type": "membership",
+      "title": "【メンバー限定】今週のAI活用Q&A 2",
+      "summary": "メンバーからの質問に回答する限定コンテンツ",
+      "status": "pending"
+    },
+    {
+      "id": "1770871263217_1do6mve",
+      "publish_date": "2026-02-28",
+      "type": "membership",
+      "title": "【メンバー限定】今週のAI活用Q&A 3",
+      "summary": "メンバーからの質問に回答する限定コンテンツ",
+      "status": "pending"
+    },
+    {
+      "id": "1770871263217_hu6tgsx",
+      "publish_date": "2026-02-28",
+      "type": "membership",
+      "title": "【メンバー限定】今週のAI活用Q&A 4",
+      "summary": "メンバーからの質問に回答する限定コンテンツ",
+      "status": "pending"
+    },
+    {
+      "id": "1770871263217_arvgt9q",
+      "publish_date": "2026-02-15",
+      "type": "paid",
+      "title": "HSP女性の転職完全マニュアル＋Notionテンプレート",
+      "summary": "転職ノウハウと情報資産（テンプレート）を提供する高単価記事",
+      "status": "pending"
+    }
+  ]
+}

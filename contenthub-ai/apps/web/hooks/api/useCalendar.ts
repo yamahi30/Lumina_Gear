@@ -51,23 +51,25 @@ interface RegenerateRowRequest {
   calendar_id: string;
   row_index: number;
   custom_instruction?: string;
+  current_post?: CalendarData['posts'][0];
+}
+
+/**
+ * カレンダー行再生成レスポンス
+ */
+interface RegenerateRowResponse {
+  message: string;
+  row_index: number;
+  regenerated_post: CalendarData['posts'][0] | null;
 }
 
 /**
  * カレンダー行再生成フック
  */
 export function useRegenerateRow() {
-  const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: async (request: RegenerateRowRequest) => {
-      return apiPost('/api/content-calendar/regenerate-row', request);
-    },
-    onSuccess: (_, variables) => {
-      // カレンダーを再取得
-      queryClient.invalidateQueries({
-        queryKey: ['calendar', variables.calendar_id],
-      });
+      return apiPost<RegenerateRowResponse>('/api/content-calendar/regenerate-row', request);
     },
   });
 }

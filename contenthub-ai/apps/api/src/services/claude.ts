@@ -5,6 +5,8 @@ import type {
   PostCondition,
   GeneratedPost,
   StyleType,
+  StyleGuideType,
+  StyleChatMessage,
   LearnedCharacteristics,
 } from '@contenthub/types';
 import {
@@ -197,6 +199,71 @@ ${styleData ? `\n## 文体の特徴\n- トーン: ${styleData.tone}\n- 語尾: $
   }
 
   /**
+   * カレンダー1行の再生成
+   */
+  async regenerateRow(
+    post: CalendarPost,
+    customInstruction?: string
+  ): Promise<CalendarPost> {
+    const prompt = `
+あなたはSNS運用のプロフェッショナルです。
+以下のSNS投稿案を再生成してください。
+
+## 現在の投稿案
+- 日付: ${post.date}（${post.day_of_week}）
+- 時間: ${post.time || '指定なし'}
+- Platform: ${post.platform}
+- カテゴリ: ${post.category}
+- タイトル案: ${post.title_idea}
+- 目的: ${post.purpose}
+- ハッシュタグ: ${post.hashtags.join(' ')}
+
+${customInstruction ? `## 修正指示\n${customInstruction}\n` : ''}
+
+## ターゲット
+HSP（繊細さん）女性エンジニア
+
+## 出力形式
+以下のJSON形式で1件の投稿案を出力してください:
+{
+  "date": "${post.date}",
+  "day_of_week": "${post.day_of_week}",
+  "time": ${post.time ? `"${post.time}"` : 'null'},
+  "platform": "${post.platform}",
+  "category": "カテゴリ名",
+  "title_idea": "新しい投稿タイトル・内容案（50-100文字程度）",
+  "purpose": "投稿の目的",
+  "hashtags": ["#タグ1", "#タグ2", "#タグ3"]
+}
+
+JSONのみを出力してください。
+`;
+
+    try {
+      const response = await this.client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const content = response.content[0];
+      if (content.type !== 'text') {
+        throw new Error('Unexpected response type');
+      }
+
+      const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Failed to parse regenerated row JSON');
+      }
+
+      return JSON.parse(jsonMatch[0]) as CalendarPost;
+    } catch (error) {
+      console.error('Row regeneration error:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 文体分析
    */
   async analyzeStyle(samples: string[]): Promise<LearnedCharacteristics> {
@@ -244,6 +311,97 @@ ${samples.map((s, i) => `### サンプル${i + 1}\n${s}`).join('\n\n')}
       return JSON.parse(jsonMatch[0]) as LearnedCharacteristics;
     } catch (error) {
       console.error('Style analysis error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * スタイル学習チャット
+   */
+  async styleLearningChat(
+    type: StyleGuideType,
+    typeLabel: string,
+    currentGuide: string,
+    userMessage: string,
+    history: StyleChatMessage[]
+  ): Promise<{ response: string; updatedContent?: string }> {
+    const systemPrompt = `あなたはSNS投稿の文体設計のプロフェッショナルです。
+HSP（繊細さん）女性エンジニア向けのSNS運用を支援しています。
+
+## あなたの役割
+- ユーザーの${typeLabel}文体ガイドについての質問に回答する
+- ユーザーの要望に応じて文体ガイドの内容を提案・修正する
+- 文体のトーン、語尾、絵文字、構成などについてアドバイスする
+
+## 現在の${typeLabel}文体ガイド
+\`\`\`markdown
+${currentGuide || '（まだ文体ガイドが設定されていません）'}
+\`\`\`
+
+## 応答ルール
+1. ユーザーの質問には丁寧に回答してください
+2. 文体ガイドの変更が必要な場合は、まず変更内容を説明してください
+3. 変更を確定する場合は、以下の形式で更新後の完全なマークダウンを出力してください：
+
+<guide_update>
+（更新後の文体ガイド全文をここに記載）
+</guide_update>
+
+4. 変更がない場合や、単なる説明の場合は<guide_update>タグは出力しないでください
+5. 変更を行う前に、ユーザーに確認を取ることを推奨します
+
+## トーンと態度
+- 親しみやすく、でも専門的に
+- ユーザーの意図を汲み取って提案する
+- 押し付けず、選択肢を提示する`;
+
+    // 会話履歴を構築
+    const messages: Anthropic.MessageParam[] = [];
+
+    // 過去の履歴を追加
+    for (const msg of history) {
+      messages.push({
+        role: msg.role,
+        content: msg.content,
+      });
+    }
+
+    // 新しいユーザーメッセージを追加
+    messages.push({
+      role: 'user',
+      content: userMessage,
+    });
+
+    try {
+      const response = await this.client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 8000,
+        system: systemPrompt,
+        messages,
+      });
+
+      const content = response.content[0];
+      if (content.type !== 'text') {
+        throw new Error('Unexpected response type');
+      }
+
+      // ガイド更新があるかチェック
+      const updateMatch = content.text.match(/<guide_update>([\s\S]*?)<\/guide_update>/);
+      let updatedContent: string | undefined;
+
+      if (updateMatch) {
+        updatedContent = updateMatch[1].trim();
+      }
+
+      // 応答テキストから<guide_update>タグを除去
+      const responseText = content.text.replace(/<guide_update>[\s\S]*?<\/guide_update>/g, '').trim();
+
+      return {
+        response: responseText,
+        updatedContent,
+      };
+    } catch (error) {
+      console.error('Style learning chat error:', error);
       throw error;
     }
   }

@@ -1,12 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { Menu, X } from 'lucide-react';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
+import { Menu, X, LogOut, User } from 'lucide-react';
 import { useState } from 'react';
-import { cn } from '@/lib/utils';
+import { useCurrentUser, useLogout } from '@/hooks/api/useAuth';
 
 export function Header() {
+  const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { data: user, isLoading } = useCurrentUser();
+  const logoutMutation = useLogout();
+
+  const handleLogout = async () => {
+    await logoutMutation.mutateAsync();
+    router.push('/login');
+  };
 
   return (
     <header className="sticky top-0 z-30 backdrop-blur-xl bg-white/80 border-b border-white/20">
@@ -23,20 +33,52 @@ export function Header() {
           <NavLink href="/dashboard">ダッシュボード</NavLink>
           <NavLink href="/calendar">カレンダー</NavLink>
           <NavLink href="/posts">投稿作成</NavLink>
+          <NavLink href="/notes">NOTE記事案</NavLink>
           <NavLink href="/style">文体学習</NavLink>
         </nav>
 
         {/* ユーザーメニュー（デスクトップ） */}
         <div className="hidden md:flex items-center gap-4">
-          <Link
-            href="/login"
-            className="inline-flex items-center justify-center rounded-xl bg-indigo-500/90 px-4 py-2 text-sm text-white font-medium
-                       hover:bg-indigo-600/90 hover:scale-[1.02]
-                       active:scale-95 transition-all duration-200
-                       border border-indigo-400/30"
-          >
-            ログイン
-          </Link>
+          {isLoading ? (
+            <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse" />
+          ) : user ? (
+            <div className="flex items-center gap-3">
+              {/* ユーザーアバター */}
+              {user.picture ? (
+                <Image
+                  src={user.picture}
+                  alt={user.name}
+                  width={32}
+                  height={32}
+                  className="rounded-full border border-gray-200"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
+                  <User className="w-4 h-4 text-indigo-600" />
+                </div>
+              )}
+              <span className="text-sm text-gray-700">{user.name}</span>
+              <button
+                onClick={handleLogout}
+                disabled={logoutMutation.isPending}
+                className="inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm text-gray-600
+                           hover:bg-gray-100/80 hover:text-gray-900
+                           transition-all duration-200"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <Link
+              href="/login"
+              className="inline-flex items-center justify-center rounded-xl bg-indigo-500/90 px-4 py-2 text-sm text-white font-medium
+                         hover:bg-indigo-600/90 hover:scale-[1.02]
+                         active:scale-95 transition-all duration-200
+                         border border-indigo-400/30"
+            >
+              ログイン
+            </Link>
+          )}
         </div>
 
         {/* モバイルメニューボタン */}
@@ -62,13 +104,47 @@ export function Header() {
             <MobileNavLink href="/posts" onClick={() => setIsMenuOpen(false)}>
               投稿作成
             </MobileNavLink>
+            <MobileNavLink href="/notes" onClick={() => setIsMenuOpen(false)}>
+              NOTE記事案
+            </MobileNavLink>
             <MobileNavLink href="/style" onClick={() => setIsMenuOpen(false)}>
               文体学習
             </MobileNavLink>
             <hr className="my-2 border-gray-200/50" />
-            <MobileNavLink href="/login" onClick={() => setIsMenuOpen(false)}>
-              ログイン
-            </MobileNavLink>
+            {user ? (
+              <>
+                <div className="px-4 py-3 flex items-center gap-3">
+                  {user.picture ? (
+                    <Image
+                      src={user.picture}
+                      alt={user.name}
+                      width={32}
+                      height={32}
+                      className="rounded-full border border-gray-200"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
+                      <User className="w-4 h-4 text-indigo-600" />
+                    </div>
+                  )}
+                  <span className="text-sm text-gray-700">{user.name}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    handleLogout();
+                    setIsMenuOpen(false);
+                  }}
+                  className="px-4 py-3 rounded-xl text-gray-700 hover:bg-gray-100/80 transition-colors text-left flex items-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  ログアウト
+                </button>
+              </>
+            ) : (
+              <MobileNavLink href="/login" onClick={() => setIsMenuOpen(false)}>
+                ログイン
+              </MobileNavLink>
+            )}
           </nav>
         </div>
       )}

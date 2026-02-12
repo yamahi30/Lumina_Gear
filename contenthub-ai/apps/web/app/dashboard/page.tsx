@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import { Header } from '@/components/shared/Header';
 import {
@@ -7,8 +9,28 @@ import {
   CardContent,
 } from '@/components/shared/Card';
 import { Button } from '@/components/shared/Button';
+import { AuthGuard } from '@/components/auth/AuthGuard';
+import { useCurrentUser } from '@/hooks/api/useAuth';
 
 export default function DashboardPage() {
+  return (
+    <AuthGuard>
+      <DashboardContent />
+    </AuthGuard>
+  );
+}
+
+function DashboardContent() {
+  const { data: user } = useCurrentUser();
+
+  // 時間帯による挨拶
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'おはようございます';
+    if (hour < 18) return 'こんにちは';
+    return 'こんばんは';
+  };
+
   return (
     <div className="min-h-screen">
       <Header />
@@ -17,7 +39,7 @@ export default function DashboardPage() {
         {/* 挨拶 */}
         <div className="mb-8">
           <h1 className="text-lg font-semibold tracking-tight mb-1">
-            おはようございます
+            {getGreeting()}{user?.name ? `、${user.name}さん` : ''}
           </h1>
           <p className="text-sm text-gray-600">
             今日も素敵な発信をしましょう

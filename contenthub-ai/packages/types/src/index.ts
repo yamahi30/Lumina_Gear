@@ -73,6 +73,9 @@ export type StyleType =
   | 'x_style'
   | 'threads_style';
 
+// スタイルガイドのプラットフォーム（簡易版）
+export type StyleGuideType = 'x' | 'threads' | 'note';
+
 export interface LearnedCharacteristics {
   tone: string;
   sentence_endings: string[];
@@ -86,6 +89,21 @@ export interface StyleLearningData {
   samples: string[];
   learned_characteristics: LearnedCharacteristics;
   updated_at: string;
+}
+
+// スタイルチャット関連
+export interface StyleChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
+export interface StyleGuideInfo {
+  type: StyleGuideType;
+  label: string;
+  filePath: string;
+  content: string;
 }
 
 // NOTE関連

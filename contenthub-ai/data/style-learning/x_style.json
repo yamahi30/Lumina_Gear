@@ -1,0 +1,23 @@
+{
+  "type": "x_style",
+  "samples": [
+    "HSPの私がAI活用で仕事効率化できた話",
+    "繊細さんでも大丈夫！IT資格取得のコツ"
+  ],
+  "learned_characteristics": {
+    "tone": "共感的・温かい（API未接続のためサンプル）",
+    "sentence_endings": [
+      "です",
+      "ます",
+      "ですね"
+    ],
+    "emoji_usage": "控えめ",
+    "paragraph_style": "短め",
+    "keywords": [
+      "HSP",
+      "繊細さん",
+      "AI活用"
+    ]
+  },
+  "updated_at": "2026-02-12T00:33:41.076Z"
+}

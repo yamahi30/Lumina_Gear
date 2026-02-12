@@ -10,12 +10,14 @@ interface CalendarTableProps {
   calendar: CalendarData;
   onRegenerateRow?: (rowIndex: number, instruction?: string) => void;
   isRegenerating?: boolean;
+  regeneratingIndex?: number | null;
 }
 
 export function CalendarTable({
   calendar,
   onRegenerateRow,
   isRegenerating,
+  regeneratingIndex,
 }: CalendarTableProps) {
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const [editInstruction, setEditInstruction] = useState('');
@@ -91,7 +93,9 @@ export function CalendarTable({
               {calendar.posts.map((post, index) => (
                 <tr
                   key={index}
-                  className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors"
+                  className={`border-b border-gray-100 hover:bg-gray-50/50 transition-colors ${
+                    regeneratingIndex === index ? 'bg-indigo-50/50 animate-pulse' : ''
+                  }`}
                 >
                   <td className="py-3 px-2">{post.date}</td>
                   <td className="py-3 px-2">{post.day_of_week}</td>
@@ -130,7 +134,7 @@ export function CalendarTable({
                           <Button
                             size="sm"
                             onClick={() => handleRegenerateRow(index)}
-                            isLoading={isRegenerating}
+                            isLoading={isRegenerating && regeneratingIndex === index}
                           >
                             再生成
                           </Button>

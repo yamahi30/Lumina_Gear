@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import type { FrequencySettings, CalendarData, ApiResponse } from '@contenthub/types';
+import type { FrequencySettings, CalendarData, CalendarPost, ApiResponse } from '@contenthub/types';
 import { formatDate, formatMonth, getDayOfWeek, getDaysInMonth } from '@contenthub/utils';
-// import { ClaudeService } from '../services/claude';
-// import { GoogleDriveService } from '../services/google-drive';
+import { ClaudeService } from '../services/claude';
+import { isClaudeEnabled } from '../config';
 
 export const calendarRouter = Router();
 
@@ -29,12 +29,23 @@ calendarRouter.post('/generate', async (req, res) => {
     const startDate = new Date(start_date);
     const calendarId = `calendar_${formatMonth(startDate)}`;
 
-    // Claude APIでカレンダー生成
-    // const claudeService = new ClaudeService();
-    // const posts = await claudeService.generateCalendar(startDate, frequency_settings);
+    let posts: CalendarPost[];
 
-    // TODO: 仮のデータを返す（Claude API実装後に置き換え）
-    const posts = generateMockCalendarPosts(startDate, frequency_settings);
+    // Claude APIでカレンダー生成（APIキーがある場合のみ）
+    if (isClaudeEnabled()) {
+      try {
+        console.log('Generating calendar with Claude API...');
+        const claudeService = new ClaudeService();
+        posts = await claudeService.generateCalendar(startDate, frequency_settings);
+      } catch (apiError) {
+        // APIエラー（クレジット不足など）時はモックデータを使用
+        console.error('Claude API error, using mock data:', apiError);
+        posts = generateMockCalendarPosts(startDate, frequency_settings);
+      }
+    } else {
+      console.log('Claude API key not set, using mock data...');
+      posts = generateMockCalendarPosts(startDate, frequency_settings);
+    }
 
     // レスポンスデータ
     const calendarData: CalendarData = {
@@ -44,10 +55,6 @@ calendarRouter.post('/generate', async (req, res) => {
       frequency_settings,
       posts,
     };
-
-    // Google Driveに保存
-    // const driveService = new GoogleDriveService();
-    // await driveService.saveCalendar(calendarData);
 
     const response: ApiResponse<CalendarData> = {
       status: 'success',
@@ -59,7 +66,7 @@ calendarRouter.post('/generate', async (req, res) => {
     console.error('Calendar generation error:', error);
     res.status(500).json({
       status: 'error',
-      error: 'カレンダー生成に失敗しました',
+      error: error instanceof Error ? error.message : 'カレンダー生成に失敗しました',
     });
   }
 });
@@ -70,28 +77,51 @@ calendarRouter.post('/generate', async (req, res) => {
  */
 calendarRouter.post('/regenerate-row', async (req, res) => {
   try {
-    const { calendar_id, row_index, custom_instruction } = req.body as {
+    const { calendar_id, row_index, custom_instruction, current_post } = req.body as {
       calendar_id: string;
       row_index: number;
       custom_instruction?: string;
+      current_post?: CalendarPost;
     };
 
-    // TODO: Claude APIで指定行を再生成
-    // const claudeService = new ClaudeService();
-    // const newRow = await claudeService.regenerateRow(calendar_id, row_index, custom_instruction);
+    if (!current_post) {
+      return res.status(400).json({
+        status: 'error',
+        error: '現在の投稿データが必要です',
+      });
+    }
+
+    let regeneratedPost: CalendarPost;
+
+    // Claude APIで再生成（APIキーがある場合のみ）
+    if (isClaudeEnabled()) {
+      try {
+        console.log('Regenerating row with Claude API...');
+        const claudeService = new ClaudeService();
+        regeneratedPost = await claudeService.regenerateRow(current_post, custom_instruction);
+      } catch (apiError) {
+        // APIエラー時はモック再生成を使用
+        console.error('Claude API error, using mock regeneration:', apiError);
+        regeneratedPost = generateMockRegeneratedPost(current_post, custom_instruction);
+      }
+    } else {
+      console.log('Claude API key not set, using mock regeneration...');
+      regeneratedPost = generateMockRegeneratedPost(current_post, custom_instruction);
+    }
 
     res.json({
       status: 'success',
       data: {
         message: '再生成が完了しました',
         row_index,
+        regenerated_post: regeneratedPost,
       },
     });
   } catch (error) {
     console.error('Row regeneration error:', error);
     res.status(500).json({
       status: 'error',
-      error: '行の再生成に失敗しました',
+      error: error instanceof Error ? error.message : '行の再生成に失敗しました',
     });
   }
 });
@@ -129,9 +159,32 @@ function getEndOfMonth(date: Date): string {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 }
 
+// モック再生成
+function generateMockRegeneratedPost(
+  currentPost: CalendarPost,
+  customInstruction?: string
+): CalendarPost {
+  const categories = ['HSP共感', '家庭DX', 'IT資格', 'マインド', 'NOTE誘導'] as const;
+  const titles = [
+    '再生成：朝の時間を味方につける',
+    '再生成：疲れた心にそっと寄り添う言葉',
+    '再生成：AI時代のキャリア戦略',
+    '再生成：家事を時短する3つの方法',
+    '再生成：HSPさんのための休日の過ごし方',
+  ];
+
+  return {
+    ...currentPost,
+    title_idea: customInstruction
+      ? `【修正】${customInstruction}に基づく投稿案`
+      : titles[Math.floor(Math.random() * titles.length)],
+    category: categories[Math.floor(Math.random() * categories.length)],
+  };
+}
+
 // 仮のカレンダーデータ生成（テスト用）
-function generateMockCalendarPosts(startDate: Date, settings: FrequencySettings) {
-  const posts: CalendarData['posts'] = [];
+function generateMockCalendarPosts(startDate: Date, settings: FrequencySettings): CalendarPost[] {
+  const posts: CalendarPost[] = [];
   const year = startDate.getFullYear();
   const month = startDate.getMonth();
   const daysInMonth = getDaysInMonth(year, month);
