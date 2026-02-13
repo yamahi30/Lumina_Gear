@@ -316,6 +316,130 @@ ${samples.map((s, i) => `### サンプル${i + 1}\n${s}`).join('\n\n')}
   }
 
   /**
+   * NOTE記事生成
+   */
+  async generateNoteArticle(
+    type: 'free_no_affiliate' | 'free_with_affiliate' | 'membership' | 'paid',
+    titleIdea: string,
+    contentIdea: string,
+    styleGuide?: string
+  ): Promise<string> {
+    const typeLabels: Record<string, { name: string; description: string }> = {
+      free_no_affiliate: {
+        name: '無料記事（アフィリエイトなし）',
+        description: '読者に価値を提供する無料記事。信頼構築が目的。',
+      },
+      free_with_affiliate: {
+        name: '無料記事（アフィリエイトあり）',
+        description: '価値提供しながら自然にアフィリエイト商品を紹介する記事。',
+      },
+      membership: {
+        name: 'メンバーシップ記事',
+        description: 'メンバー限定の特別コンテンツ。深い洞察や限定情報を提供。',
+      },
+      paid: {
+        name: '有料記事',
+        description: '有料で販売する高品質なコンテンツ。具体的なノウハウや資料を含む。',
+      },
+    };
+
+    const typeInfo = typeLabels[type];
+
+    const prompt = `
+あなたはプロのライターです。以下の条件でNOTE記事を作成してください。
+
+## 記事タイプ
+${typeInfo.name}
+${typeInfo.description}
+
+## タイトル案
+${titleIdea || '（指定なし - 内容から適切なタイトルを考えてください）'}
+
+## 記事の内容・テーマ
+${contentIdea || '（指定なし）'}
+
+## ターゲット読者
+- HSP（繊細さん）女性
+- 20〜30代
+- 会社員やパート、働く気持ちのある労働世代
+- 生活をよくしたい、副業や転職に興味がある
+
+${styleGuide ? `## 文体ガイド\n${styleGuide}` : ''}
+
+## 出力形式
+マークダウン形式で記事を出力してください。
+- 見出し（##, ###）を適切に使用
+- 読みやすい段落構成
+- 具体例や実体験を交えた内容
+- 読者の共感を得られる表現
+- 適切な長さ（2000〜4000文字程度）
+
+記事本文のみを出力してください（メタ情報は不要）。
+`;
+
+    try {
+      const response = await this.client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 8000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const content = response.content[0];
+      if (content.type !== 'text') {
+        throw new Error('Unexpected response type');
+      }
+
+      return content.text;
+    } catch (error) {
+      console.error('Article generation error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * NOTE記事ブラッシュアップ
+   */
+  async brushUpNoteArticle(
+    currentArticle: string,
+    instruction: string
+  ): Promise<string> {
+    const prompt = `
+あなたはプロの編集者です。以下の記事をユーザーの指示に従ってブラッシュアップしてください。
+
+## 現在の記事
+${currentArticle}
+
+## ブラッシュアップ指示
+${instruction}
+
+## 注意事項
+- 指示に従って記事を改善してください
+- 元の記事の良い部分は維持してください
+- マークダウン形式を保持してください
+
+ブラッシュアップ後の記事本文のみを出力してください。
+`;
+
+    try {
+      const response = await this.client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 8000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const content = response.content[0];
+      if (content.type !== 'text') {
+        throw new Error('Unexpected response type');
+      }
+
+      return content.text;
+    } catch (error) {
+      console.error('Article brush-up error:', error);
+      throw error;
+    }
+  }
+
+  /**
    * スタイル学習チャット
    */
   async styleLearningChat(

@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import type { FrequencySettings, CalendarData, CalendarPost, ApiResponse } from '@contenthub/types';
 import { formatDate, formatMonth, getDayOfWeek, getDaysInMonth } from '@contenthub/utils';
-import { ClaudeService } from '../services/claude';
-import { isClaudeEnabled } from '../config';
+import { GeminiService } from '../services/gemini';
+import { isGeminiEnabled, isDriveEnabled } from '../config';
+import { getDriveService } from '../services/drive-helper';
+import { requireAuth } from './auth';
 
 export const calendarRouter = Router();
 
@@ -12,9 +14,10 @@ export const calendarRouter = Router();
  */
 calendarRouter.post('/generate', async (req, res) => {
   try {
-    const { start_date, frequency_settings } = req.body as {
+    const { start_date, frequency_settings, week_range } = req.body as {
       start_date: string;
       frequency_settings: FrequencySettings;
+      week_range?: { start: number; end: number };
     };
 
     // 入力検証
@@ -27,34 +30,63 @@ calendarRouter.post('/generate', async (req, res) => {
 
     // カレンダーID生成
     const startDate = new Date(start_date);
-    const calendarId = `calendar_${formatMonth(startDate)}`;
+    const calendarId = week_range
+      ? `calendar_${formatMonth(startDate)}_week${week_range.start}-${week_range.end}`
+      : `calendar_${formatMonth(startDate)}`;
 
     let posts: CalendarPost[];
 
-    // Claude APIでカレンダー生成（APIキーがある場合のみ）
-    if (isClaudeEnabled()) {
+    // Gemini APIでカレンダー生成（コスト効率重視）
+    if (isGeminiEnabled()) {
       try {
-        console.log('Generating calendar with Claude API...');
-        const claudeService = new ClaudeService();
-        posts = await claudeService.generateCalendar(startDate, frequency_settings);
+        const geminiService = new GeminiService();
+        if (week_range) {
+          // 週単位で生成
+          console.log(`Generating calendar for week ${week_range.start}-${week_range.end} with Gemini API...`);
+          posts = await geminiService.generateWeek(startDate, week_range.start, week_range.end, frequency_settings);
+        } else {
+          // 月単位で生成
+          console.log('Generating calendar with Gemini API...');
+          posts = await geminiService.generateCalendar(startDate, frequency_settings);
+        }
       } catch (apiError) {
-        // APIエラー（クレジット不足など）時はモックデータを使用
-        console.error('Claude API error, using mock data:', apiError);
-        posts = generateMockCalendarPosts(startDate, frequency_settings);
+        // APIエラー時はモックデータを使用
+        console.error('Gemini API error, using mock data:', apiError);
+        posts = week_range
+          ? generateMockWeekPosts(startDate, week_range.start, week_range.end, frequency_settings)
+          : generateMockCalendarPosts(startDate, frequency_settings);
       }
     } else {
-      console.log('Claude API key not set, using mock data...');
-      posts = generateMockCalendarPosts(startDate, frequency_settings);
+      console.log('Gemini API key not set, using mock data...');
+      posts = week_range
+        ? generateMockWeekPosts(startDate, week_range.start, week_range.end, frequency_settings)
+        : generateMockCalendarPosts(startDate, frequency_settings);
     }
 
     // レスポンスデータ
     const calendarData: CalendarData = {
       calendar_id: calendarId,
       start_date: start_date,
-      end_date: getEndOfMonth(startDate),
+      end_date: week_range
+        ? `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(week_range.end).padStart(2, '0')}`
+        : getEndOfMonth(startDate),
       frequency_settings,
       posts,
     };
+
+    // Google Driveに保存（有効な場合）
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          await driveService.saveCalendar(calendarData);
+          console.log('Calendar saved to Google Drive');
+        }
+      } catch (driveError) {
+        console.error('Failed to save calendar to Drive:', driveError);
+        // Drive保存に失敗してもレスポンスは返す
+      }
+    }
 
     const response: ApiResponse<CalendarData> = {
       status: 'success',
@@ -93,19 +125,19 @@ calendarRouter.post('/regenerate-row', async (req, res) => {
 
     let regeneratedPost: CalendarPost;
 
-    // Claude APIで再生成（APIキーがある場合のみ）
-    if (isClaudeEnabled()) {
+    // Gemini APIで再生成（コスト効率重視）
+    if (isGeminiEnabled()) {
       try {
-        console.log('Regenerating row with Claude API...');
-        const claudeService = new ClaudeService();
-        regeneratedPost = await claudeService.regenerateRow(current_post, custom_instruction);
+        console.log('Regenerating row with Gemini API...');
+        const geminiService = new GeminiService();
+        regeneratedPost = await geminiService.regenerateRow(current_post, custom_instruction);
       } catch (apiError) {
         // APIエラー時はモック再生成を使用
-        console.error('Claude API error, using mock regeneration:', apiError);
+        console.error('Gemini API error, using mock regeneration:', apiError);
         regeneratedPost = generateMockRegeneratedPost(current_post, custom_instruction);
       }
     } else {
-      console.log('Claude API key not set, using mock regeneration...');
+      console.log('Gemini API key not set, using mock regeneration...');
       regeneratedPost = generateMockRegeneratedPost(current_post, custom_instruction);
     }
 
@@ -164,7 +196,7 @@ function generateMockRegeneratedPost(
   currentPost: CalendarPost,
   customInstruction?: string
 ): CalendarPost {
-  const categories = ['HSP共感', '家庭DX', 'IT資格', 'マインド', 'NOTE誘導'] as const;
+  const categories = ['HSP', '家庭DX', 'IT・AI', 'マインド', 'NOTE誘導', 'Tips'] as const;
   const titles = [
     '再生成：朝の時間を味方につける',
     '再生成：疲れた心にそっと寄り添う言葉',
@@ -190,7 +222,7 @@ function generateMockCalendarPosts(startDate: Date, settings: FrequencySettings)
   const daysInMonth = getDaysInMonth(year, month);
 
   const xTimes = ['07:30', '12:30', '21:00'];
-  const categories = ['HSP共感', '家庭DX', 'IT資格', 'マインド', 'NOTE誘導'] as const;
+  const categories = ['HSP', '家庭DX', 'IT・AI', 'マインド', 'NOTE誘導', 'Tips'] as const;
 
   for (let day = 1; day <= daysInMonth; day++) {
     const date = new Date(year, month, day);
@@ -222,6 +254,66 @@ function generateMockCalendarPosts(startDate: Date, settings: FrequencySettings)
         title_idea: `Threads投稿案 ${day}`,
         purpose: '深い共感形成',
         hashtags: ['#HSP', '#キャリア'],
+      });
+    }
+  }
+
+  return posts;
+}
+
+// 週単位のモックデータ生成
+function generateMockWeekPosts(
+  startDate: Date,
+  startDay: number,
+  endDay: number,
+  settings: FrequencySettings
+): CalendarPost[] {
+  const posts: CalendarPost[] = [];
+  const year = startDate.getFullYear();
+  const month = startDate.getMonth();
+
+  const xTimes = ['07:30', '12:30', '21:00'];
+  const categories = ['HSP', '家庭DX', 'IT・AI', 'マインド', 'NOTE誘導', 'Tips'] as const;
+  const titles = [
+    'HSPさんの心に響く言葉',
+    '時短家電で家事効率UP',
+    'AI活用で仕事を効率化',
+    '自分を大切にする習慣',
+    '新しい記事を公開しました',
+    '今日のちょっとしたTips',
+  ];
+
+  for (let day = startDay; day <= endDay; day++) {
+    const date = new Date(year, month, day);
+    const dateStr = formatDate(date);
+    const dayOfWeek = getDayOfWeek(date);
+
+    // X投稿
+    for (let i = 0; i < settings.x_per_day; i++) {
+      const catIndex = (day + i) % categories.length;
+      posts.push({
+        date: dateStr,
+        day_of_week: dayOfWeek,
+        time: xTimes[i] || '12:00',
+        platform: 'X',
+        category: categories[catIndex],
+        title_idea: `${titles[catIndex]}（${month + 1}/${day}）`,
+        purpose: '共感形成 → NOTE誘導',
+        hashtags: ['#HSP', '#AI活用'],
+      });
+    }
+
+    // Threads投稿
+    for (let i = 0; i < settings.threads_per_day; i++) {
+      posts.push({
+        date: dateStr,
+        day_of_week: dayOfWeek,
+        time: '10:00',
+        platform: 'Threads',
+        category: categories[(day + 3) % categories.length],
+        title_idea: `Threadsで深掘り投稿（${month + 1}/${day}）`,
+        purpose: '深い共感形成',
+        hashtags: ['#繊細さん', '#キャリア'],
       });
     }
   }

@@ -11,13 +11,14 @@ export interface FrequencySettings {
 export type Platform = 'X' | 'Threads' | 'NOTE';
 
 export type PostCategory =
-  | 'HSP共感'
+  | 'HSP'
   | '家庭DX'
-  | 'IT資格'
+  | 'IT・AI'
   | 'マインド'
   | 'NOTE誘導'
   | 'プロフィール'
-  | '副収入';
+  | '副収入'
+  | 'Tips';
 
 export interface CalendarPost {
   date: string;
@@ -77,11 +78,18 @@ export type StyleType =
 export type StyleGuideType = 'x' | 'threads' | 'note';
 
 export interface LearnedCharacteristics {
+  // 文体特性
   tone: string;
   sentence_endings: string[];
   emoji_usage: string;
   paragraph_style: string;
   keywords: string[];
+  // 構造特性
+  intro_patterns?: string[];      // 導入パターン
+  body_structure?: string;        // 本文構成
+  closing_patterns?: string[];    // 締めくくりパターン
+  heading_style?: string;         // 見出しスタイル
+  transition_phrases?: string[];  // 繋ぎ言葉
 }
 
 export interface StyleLearningData {
@@ -154,4 +162,18 @@ export interface ApiResponse<T> {
   status: 'success' | 'error';
   data?: T;
   error?: string;
+}
+
+// カテゴリ設定
+export interface CategoryConfig {
+  id: string;
+  name: string;
+  description?: string;
+  percentage: number; // 配分比率（0-100）
+  color?: string;     // 表示色
+}
+
+export interface CategorySettings {
+  categories: CategoryConfig[];
+  updated_at: string;
 }

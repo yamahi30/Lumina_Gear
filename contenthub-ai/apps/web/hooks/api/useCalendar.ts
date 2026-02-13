@@ -10,6 +10,7 @@ import { apiPost, apiGet } from '@/lib/api';
 interface GenerateCalendarRequest {
   start_date: string;
   frequency_settings: FrequencySettings;
+  week_range?: { start: number; end: number };
 }
 
 /**

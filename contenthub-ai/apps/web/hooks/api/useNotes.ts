@@ -98,8 +98,6 @@ export function useDeleteNoteIdea() {
 
 // NOTE記事案を再生成
 export function useRegenerateNoteIdea() {
-  const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: async ({
       ideaId,
@@ -114,6 +112,59 @@ export function useRegenerateNoteIdea() {
       }>('/api/notes/regenerate-idea', {
         idea_id: ideaId,
         custom_instruction: customInstruction,
+      });
+    },
+  });
+}
+
+// NOTE記事のタイプ
+export type NoteArticleType = 'free_no_affiliate' | 'free_with_affiliate' | 'membership' | 'paid';
+
+// NOTE記事を生成
+export function useGenerateNoteArticle() {
+  return useMutation({
+    mutationFn: async ({
+      type,
+      titleIdea,
+      contentIdea,
+      styleGuide,
+    }: {
+      type: NoteArticleType;
+      titleIdea?: string;
+      contentIdea?: string;
+      styleGuide?: string;
+    }) => {
+      return apiPost<{ article: string }, {
+        type: NoteArticleType;
+        title_idea?: string;
+        content_idea?: string;
+        style_guide?: string;
+      }>('/api/notes/generate-article', {
+        type,
+        title_idea: titleIdea,
+        content_idea: contentIdea,
+        style_guide: styleGuide,
+      });
+    },
+  });
+}
+
+// NOTE記事をブラッシュアップ
+export function useBrushUpNoteArticle() {
+  return useMutation({
+    mutationFn: async ({
+      article,
+      instruction,
+    }: {
+      article: string;
+      instruction: string;
+    }) => {
+      return apiPost<{ article: string }, {
+        article: string;
+        instruction: string;
+      }>('/api/notes/brush-up', {
+        article,
+        instruction,
       });
     },
   });

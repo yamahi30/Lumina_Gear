@@ -1,13 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/shared/Card';
 import { Button } from '@/components/shared/Button';
 import { useCurrentUser } from '@/hooks/api/useAuth';
 import { apiGet } from '@/lib/api';
 
-export default function LoginPage() {
+// ローディング表示
+function LoadingSpinner() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
+    </div>
+  );
+}
+
+// ログインコンテンツ（useSearchParamsを使用）
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: user, isLoading } = useCurrentUser();
@@ -45,11 +55,7 @@ export default function LoginPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   return (
@@ -143,5 +149,14 @@ export default function LoginPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+// メインページコンポーネント（Suspenseでラップ）
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <LoginContent />
+    </Suspense>
   );
 }

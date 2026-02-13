@@ -19,6 +19,7 @@ import { calendarRouter } from './routes/calendar';
 import { postsRouter } from './routes/posts';
 import { styleRouter } from './routes/style';
 import { notesRouter } from './routes/notes';
+import { settingsRouter } from './routes/settings';
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -42,6 +43,7 @@ app.use('/api/content-calendar', calendarRouter);
 app.use('/api/posts', postsRouter);
 app.use('/api/style-learning', styleRouter);
 app.use('/api/notes', notesRouter);
+app.use('/api/settings', settingsRouter);
 
 // エラーハンドリング
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

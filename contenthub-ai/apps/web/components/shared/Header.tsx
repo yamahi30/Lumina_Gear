@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Menu, X, LogOut, User } from 'lucide-react';
+import { Menu, X, LogOut, User, Settings } from 'lucide-react';
 import { useState } from 'react';
 import { useCurrentUser, useLogout } from '@/hooks/api/useAuth';
 
@@ -33,8 +33,9 @@ export function Header() {
           <NavLink href="/dashboard">ダッシュボード</NavLink>
           <NavLink href="/calendar">カレンダー</NavLink>
           <NavLink href="/posts">投稿作成</NavLink>
-          <NavLink href="/notes">NOTE記事案</NavLink>
-          <NavLink href="/style">文体学習</NavLink>
+          <NavLink href="/notes">記事作成</NavLink>
+          <NavLink href="/style">文体構造学習</NavLink>
+          <NavLink href="/settings">設定</NavLink>
         </nav>
 
         {/* ユーザーメニュー（デスクトップ） */}
@@ -105,10 +106,13 @@ export function Header() {
               投稿作成
             </MobileNavLink>
             <MobileNavLink href="/notes" onClick={() => setIsMenuOpen(false)}>
-              NOTE記事案
+              記事作成
             </MobileNavLink>
             <MobileNavLink href="/style" onClick={() => setIsMenuOpen(false)}>
-              文体学習
+              文体構造学習
+            </MobileNavLink>
+            <MobileNavLink href="/settings" onClick={() => setIsMenuOpen(false)}>
+              設定
             </MobileNavLink>
             <hr className="my-2 border-gray-200/50" />
             {user ? (

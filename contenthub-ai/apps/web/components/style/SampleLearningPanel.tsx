@@ -88,7 +88,7 @@ export function SampleLearningPanel() {
         <div className="px-5 py-4 border-b border-gray-100">
           <h2 className="font-semibold text-gray-900">サンプル投稿を登録</h2>
           <p className="text-xs text-gray-500 mt-1">
-            過去の投稿をサンプルとして登録し、文体を分析します
+            過去の投稿をサンプルとして登録し、文体・構造を分析します
           </p>
         </div>
 
@@ -184,8 +184,9 @@ export function SampleLearningPanel() {
           </h3>
           <ul className="text-sm text-indigo-700 space-y-1">
             <li>• 3〜5個以上のサンプルを登録するとより正確に分析できます</li>
-            <li>• 似たテイストの投稿を集めると、一貫した文体を学習できます</li>
+            <li>• 似たテイストの投稿を集めると、一貫した文体・構造を学習できます</li>
             <li>• 反応の良かった投稿を優先的に登録するのがおすすめです</li>
+            <li>• NOTE記事は導入〜本文〜締めくくりの構造も分析されます</li>
           </ul>
         </div>
       </div>

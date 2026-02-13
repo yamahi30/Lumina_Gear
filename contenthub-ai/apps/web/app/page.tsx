@@ -13,7 +13,7 @@ export default function Home() {
         </p>
 
         {/* クイックアクション */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <div className="flex justify-center">
           <Link
             href="/dashboard"
             className="inline-flex items-center justify-center rounded-2xl bg-indigo-500/90 px-6 py-3 text-white font-medium
@@ -22,15 +22,6 @@ export default function Home() {
                        backdrop-blur-sm border border-indigo-400/30"
           >
             ダッシュボードへ
-          </Link>
-          <Link
-            href="/login"
-            className="inline-flex items-center justify-center rounded-2xl bg-white/80 px-6 py-3 text-gray-700 font-medium
-                       hover:bg-white/90 hover:scale-[1.02] hover:-translate-y-0.5
-                       active:scale-95 transition-all duration-200
-                       backdrop-blur-sm border border-white/30"
-          >
-            ログイン
           </Link>
         </div>
       </div>

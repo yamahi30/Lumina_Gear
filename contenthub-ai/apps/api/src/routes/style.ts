@@ -11,7 +11,8 @@ import type {
 } from '@contenthub/types';
 import { STYLE_TYPE_LABELS } from '@contenthub/constants';
 import { ClaudeService } from '../services/claude';
-import { isClaudeEnabled } from '../config';
+import { isClaudeEnabled, isDriveEnabled } from '../config';
+import { getDriveService } from '../services/drive-helper';
 
 export const styleRouter = Router();
 
@@ -387,6 +388,20 @@ styleRouter.post('/learn', async (req, res) => {
     const filePath = path.join(STYLE_LEARNING_DATA_DIR, fileName);
     await fs.writeFile(filePath, JSON.stringify(styleData, null, 2), 'utf-8');
 
+    // Google Driveに保存（有効な場合）
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          await driveService.saveStyleData(type, styleData);
+          console.log('Style data saved to Google Drive');
+        }
+      } catch (driveError) {
+        console.error('Failed to save style data to Drive:', driveError);
+        // Drive保存に失敗してもレスポンスは返す
+      }
+    }
+
     const response: ApiResponse<StyleLearningData> = {
       status: 'success',
       data: styleData,
@@ -531,6 +546,19 @@ styleRouter.put('/:type', async (req, res) => {
 
     // ファイルに保存
     await fs.writeFile(filePath, JSON.stringify(styleData, null, 2), 'utf-8');
+
+    // Google Driveに保存（有効な場合）
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          await driveService.saveStyleData(type, styleData);
+          console.log('Style samples saved to Google Drive');
+        }
+      } catch (driveError) {
+        console.error('Failed to save style samples to Drive:', driveError);
+      }
+    }
 
     res.json({
       status: 'success',

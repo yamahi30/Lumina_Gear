@@ -16,7 +16,7 @@ import {
 } from '@/hooks/api/usePosts';
 
 const defaultCondition: PostCondition = {
-  category: 'HSP共感',
+  category: 'HSP',
   content_idea: '',
   purpose: '',
   hashtags: '#HSP #繊細さん',

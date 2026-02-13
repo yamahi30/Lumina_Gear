@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { CalendarData, FrequencySettings } from '@contenthub/types';
+import type { CalendarData, FrequencySettings, CalendarPost } from '@contenthub/types';
 import { Header } from '@/components/shared/Header';
 import { CalendarForm } from '@/components/calendar/CalendarForm';
 import { CalendarTable } from '@/components/calendar/CalendarTable';
@@ -10,19 +10,46 @@ import { useGenerateCalendar, useRegenerateRow } from '@/hooks/api/useCalendar';
 export default function CalendarPage() {
   const [generatedCalendar, setGeneratedCalendar] = useState<CalendarData | null>(null);
   const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null);
+  const [loadingWeek, setLoadingWeek] = useState<number | null>(null);
 
   const generateMutation = useGenerateCalendar();
   const regenerateRowMutation = useRegenerateRow();
 
-  const handleGenerate = (startDate: string, settings: FrequencySettings) => {
+  const handleGenerate = (
+    startDate: string,
+    settings: FrequencySettings,
+    weekRange?: { start: number; end: number }
+  ) => {
+    // 週単位生成の場合、週のインデックスを計算
+    if (weekRange) {
+      setLoadingWeek(Math.floor((weekRange.start - 1) / 7));
+    }
+
     generateMutation.mutate(
-      { start_date: startDate, frequency_settings: settings },
+      { start_date: startDate, frequency_settings: settings, week_range: weekRange },
       {
         onSuccess: (data) => {
-          setGeneratedCalendar(data);
+          if (weekRange && generatedCalendar) {
+            // 既存のカレンダーに週のデータをマージ
+            const existingPosts = generatedCalendar.posts.filter(
+              (post) => {
+                const day = parseInt(post.date.split('-')[2], 10);
+                return day < weekRange.start || day > weekRange.end;
+              }
+            );
+            const mergedPosts = [...existingPosts, ...data.posts].sort((a, b) => {
+              if (a.date !== b.date) return a.date.localeCompare(b.date);
+              return (a.time || '').localeCompare(b.time || '');
+            });
+            setGeneratedCalendar({ ...generatedCalendar, posts: mergedPosts });
+          } else {
+            setGeneratedCalendar(data);
+          }
+          setLoadingWeek(null);
         },
         onError: (error) => {
           alert(`エラー: ${error.message}`);
+          setLoadingWeek(null);
         },
       }
     );
@@ -80,6 +107,7 @@ export default function CalendarPage() {
           <CalendarForm
             onSubmit={handleGenerate}
             isLoading={generateMutation.isPending}
+            loadingWeek={loadingWeek}
           />
 
           {/* エラー表示 */}

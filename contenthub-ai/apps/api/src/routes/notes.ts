@@ -3,8 +3,14 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { NoteIdea, NoteIdeasData, ApiResponse } from '@contenthub/types';
 import { generateId } from '@contenthub/utils';
+import { ClaudeService } from '../services/claude';
+import { isDriveEnabled } from '../config';
+import { getDriveService } from '../services/drive-helper';
 
 export const notesRouter = Router();
+
+// Claudeサービスインスタンス
+const claudeService = new ClaudeService();
 
 // 保存ディレクトリ
 const NOTE_IDEAS_DIR = path.resolve(process.cwd(), '../../data/note-ideas');
@@ -74,6 +80,19 @@ notesRouter.post('/generate-ideas', async (req, res) => {
 
     // ファイルに保存
     await saveNoteIdeas(ideasData);
+
+    // Google Driveに保存（有効な場合）
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          await driveService.saveNoteIdeas(ideasData);
+          console.log('Note ideas saved to Google Drive');
+        }
+      } catch (driveError) {
+        console.error('Failed to save note ideas to Drive:', driveError);
+      }
+    }
 
     const response: ApiResponse<NoteIdeasData> = {
       status: 'success',
@@ -202,6 +221,19 @@ notesRouter.put('/ideas/:month/:id', async (req, res) => {
 
     await saveNoteIdeas(ideasData);
 
+    // Google Driveに保存（有効な場合）
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          await driveService.saveNoteIdeas(ideasData);
+          console.log('Note ideas synced to Google Drive after update');
+        }
+      } catch (driveError) {
+        console.error('Failed to sync note ideas to Drive:', driveError);
+      }
+    }
+
     res.json({
       status: 'success',
       data: ideasData.ideas[ideaIndex],
@@ -242,6 +274,19 @@ notesRouter.delete('/ideas/:month/:id', async (req, res) => {
     ideasData.ideas = filteredIdeas;
     await saveNoteIdeas(ideasData);
 
+    // Google Driveに保存（有効な場合）
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          await driveService.saveNoteIdeas(ideasData);
+          console.log('Note ideas synced to Google Drive after delete');
+        }
+      } catch (driveError) {
+        console.error('Failed to sync note ideas to Drive:', driveError);
+      }
+    }
+
     res.json({
       status: 'success',
       data: { message: '削除しました' },
@@ -251,6 +296,97 @@ notesRouter.delete('/ideas/:month/:id', async (req, res) => {
     res.status(500).json({
       status: 'error',
       error: '削除に失敗しました',
+    });
+  }
+});
+
+/**
+ * NOTE記事生成
+ * POST /api/notes/generate-article
+ */
+notesRouter.post('/generate-article', async (req, res) => {
+  try {
+    const { type, title_idea, content_idea, style_guide } = req.body as {
+      type: 'free_no_affiliate' | 'free_with_affiliate' | 'membership' | 'paid';
+      title_idea?: string;
+      content_idea?: string;
+      style_guide?: string;
+    };
+
+    // 入力検証
+    if (!type) {
+      return res.status(400).json({
+        status: 'error',
+        error: '記事タイプは必須です',
+      });
+    }
+
+    if (!title_idea && !content_idea) {
+      return res.status(400).json({
+        status: 'error',
+        error: 'タイトル案または内容のいずれかは必須です',
+      });
+    }
+
+    // Claude APIで記事生成
+    const article = await claudeService.generateNoteArticle(
+      type,
+      title_idea || '',
+      content_idea || '',
+      style_guide
+    );
+
+    const response: ApiResponse<{ article: string }> = {
+      status: 'success',
+      data: { article },
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Article generation error:', error);
+    res.status(500).json({
+      status: 'error',
+      error: '記事の生成に失敗しました',
+    });
+  }
+});
+
+/**
+ * NOTE記事ブラッシュアップ
+ * POST /api/notes/brush-up
+ */
+notesRouter.post('/brush-up', async (req, res) => {
+  try {
+    const { article, instruction } = req.body as {
+      article: string;
+      instruction: string;
+    };
+
+    // 入力検証
+    if (!article || !instruction) {
+      return res.status(400).json({
+        status: 'error',
+        error: '記事とブラッシュアップ指示は必須です',
+      });
+    }
+
+    // Claude APIでブラッシュアップ
+    const brushedUpArticle = await claudeService.brushUpNoteArticle(
+      article,
+      instruction
+    );
+
+    const response: ApiResponse<{ article: string }> = {
+      status: 'success',
+      data: { article: brushedUpArticle },
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Article brush-up error:', error);
+    res.status(500).json({
+      status: 'error',
+      error: 'ブラッシュアップに失敗しました',
     });
   }
 });

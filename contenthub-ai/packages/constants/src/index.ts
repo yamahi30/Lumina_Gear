@@ -5,24 +5,26 @@ export const PLATFORMS: Platform[] = ['X', 'Threads', 'NOTE'];
 
 // 投稿カテゴリ
 export const POST_CATEGORIES: PostCategory[] = [
-  'HSP共感',
+  'HSP',
   '家庭DX',
-  'IT資格',
+  'IT・AI',
   'マインド',
   'NOTE誘導',
   'プロフィール',
   '副収入',
+  'Tips',
 ];
 
 // カテゴリ配分（X投稿用）
 export const CATEGORY_DISTRIBUTION: Record<PostCategory, number> = {
-  'HSP共感': 0.21,
-  '家庭DX': 0.23,
-  'IT資格': 0.13,
-  'マインド': 0.17,
-  'NOTE誘導': 0.23,
-  'プロフィール': 0.04,
-  '副収入': 0.0,
+  'HSP': 0.15,
+  '家庭DX': 0.15,
+  'IT・AI': 0.15,
+  'マインド': 0.15,
+  'NOTE誘導': 0.15,
+  'Tips': 0.15,
+  'プロフィール': 0.05,
+  '副収入': 0.05,
 };
 
 // 文体タイプ

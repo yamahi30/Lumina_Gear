@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
 import { Plus, Trash2, Sparkles, Loader2 } from 'lucide-react';
 import type { PostCondition, PostCategory } from '@contenthub/types';
 import { POST_CATEGORIES } from '@contenthub/constants';
+import { useCategories } from '@/hooks/api/useCategories';
 
 interface ConditionFormProps {
   conditions: PostCondition[];
@@ -15,7 +15,7 @@ interface ConditionFormProps {
 }
 
 const emptyCondition: PostCondition = {
-  category: 'HSP共感',
+  category: 'HSP',
   content_idea: '',
   purpose: '',
   hashtags: '',
@@ -29,6 +29,10 @@ export function ConditionForm({
   countPerCondition,
   onCountChange,
 }: ConditionFormProps) {
+  // 設定画面のカテゴリを取得（フォールバックでPOST_CATEGORIESを使用）
+  const { data: categorySettings } = useCategories();
+  const categories = categorySettings?.categories?.map((c) => c.name) || POST_CATEGORIES;
+
   const handleConditionChange = (index: number, field: keyof PostCondition, value: string) => {
     const newConditions = [...conditions];
     newConditions[index] = { ...newConditions[index], [field]: value };
@@ -86,7 +90,7 @@ export function ConditionForm({
                 className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm
                   focus:border-indigo-300 focus:ring focus:ring-indigo-200/50"
               >
-                {POST_CATEGORIES.map((cat) => (
+                {categories.map((cat) => (
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
               </select>

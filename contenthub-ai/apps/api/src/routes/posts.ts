@@ -3,8 +3,9 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { PostCondition, GeneratedPost, SavedPost, ApiResponse } from '@contenthub/types';
 import { generateId } from '@contenthub/utils';
-import { ClaudeService } from '../services/claude';
-import { isClaudeEnabled } from '../config';
+import { GeminiService } from '../services/gemini';
+import { isGeminiEnabled, isDriveEnabled } from '../config';
+import { getDriveService } from '../services/drive-helper';
 
 export const postsRouter = Router();
 
@@ -60,17 +61,18 @@ postsRouter.post('/generate', async (req, res) => {
 
     let posts: Record<string, GeneratedPost[]> = {};
 
-    // Claude APIで投稿生成（有効な場合のみ）
-    if (isClaudeEnabled()) {
+    // Gemini APIで投稿生成（コスト効率重視）
+    if (isGeminiEnabled()) {
       try {
-        const claudeService = new ClaudeService();
-        posts = await claudeService.generatePosts(
+        console.log('Generating posts with Gemini API...');
+        const geminiService = new GeminiService();
+        posts = await geminiService.generatePosts(
           platform,
           conditions,
           count_per_condition || 10
         );
       } catch (apiError) {
-        console.error('Claude API error, using fallback:', apiError);
+        console.error('Gemini API error, using fallback:', apiError);
         for (const condition of conditions) {
           posts[condition.category] = generateMockPosts(
             condition,
@@ -81,6 +83,7 @@ postsRouter.post('/generate', async (req, res) => {
       }
     } else {
       // モックデータを使用
+      console.log('Gemini API key not set, using mock data...');
       for (const condition of conditions) {
         posts[condition.category] = generateMockPosts(
           condition,
@@ -137,6 +140,19 @@ postsRouter.post('/save', async (req, res) => {
 
     // ファイルに保存
     await savePosts(platform, savedPosts);
+
+    // Google Driveに保存（有効な場合）
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          await driveService.saveSavedPosts(platform, savedPosts);
+          console.log('Saved posts synced to Google Drive');
+        }
+      } catch (driveError) {
+        console.error('Failed to save posts to Drive:', driveError);
+      }
+    }
 
     res.json({
       status: 'success',
@@ -248,6 +264,19 @@ postsRouter.delete('/saved/:platform/:id', async (req, res) => {
 
     await savePosts(platform, filteredPosts);
 
+    // Google Driveにも反映（有効な場合）
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          await driveService.saveSavedPosts(platform, filteredPosts);
+          console.log('Saved posts synced to Google Drive after delete');
+        }
+      } catch (driveError) {
+        console.error('Failed to sync posts to Drive:', driveError);
+      }
+    }
+
     res.json({
       status: 'success',
       data: { message: '削除しました' },
@@ -263,7 +292,7 @@ postsRouter.delete('/saved/:platform/:id', async (req, res) => {
 
 // カテゴリ別のサンプル投稿テンプレート
 const MOCK_TEMPLATES: Record<string, string[]> = {
-  'HSP共感': [
+  'HSP': [
     '「なんで自分だけこんなに疲れるんだろう」って思ったことありませんか？\n\nHSPさんは、周りの情報を人一倍キャッチしてるから当然なんです。\n\n自分を責めないで。それは「繊細さ」という才能の裏返し。',
     '今日も1日お疲れさまでした。\n\n誰かの何気ない一言が気になって、ずっと頭の中でグルグル…HSPあるあるですよね。\n\nでも大丈夫。明日は明日の風が吹きます。',
     '「気にしすぎ」って言われるたびに傷ついてきた。\n\nでも最近わかったんです。気にしすぎなんじゃなくて、感じ取る力が強いだけ。\n\nこの繊細さ、実は武器になる。',
@@ -277,7 +306,7 @@ const MOCK_TEMPLATES: Record<string, string[]> = {
     'ChatGPTに献立考えてもらったら、買い物リストまで出してくれた。\n\n「冷蔵庫にあるもので」って条件つけたら、ちゃんと考慮してくれる。\n\nAI、家庭の救世主かも。',
     'ルンバを買って半年。\n\n「床にモノを置かない習慣」が自然についた。\n\nお掃除ロボットの真の価値は、掃除してくれることより「片付けの動機づけ」かもしれない。',
   ],
-  'IT資格': [
+  'IT・AI': [
     '基本情報技術者、独学3ヶ月で合格しました。\n\n使ったのは過去問道場と動画教材のみ。\n\n通勤時間を勉強時間に変えるだけで、意外といける。',
     'AWS SAA、2回目でやっと合格…！\n\n1回目の失敗で学んだこと→ハンズオンは絶対やるべき。\n\n座学だけじゃ太刀打ちできない試験だった。',
     'IT資格って意味ある？って聞かれるけど、\n\n・転職で書類通過率UP\n・自己肯定感UP\n・知識の体系化\n\n少なくともこの3つは得られた。',
@@ -318,7 +347,7 @@ function generateMockPosts(
   const posts: GeneratedPost[] = [];
 
   // カテゴリに対応するテンプレートを取得
-  const templates = MOCK_TEMPLATES[condition.category] || MOCK_TEMPLATES['HSP共感'];
+  const templates = MOCK_TEMPLATES[condition.category] || MOCK_TEMPLATES['HSP'];
   const hashtags = condition.hashtags.split(' ').filter(Boolean);
 
   for (let i = 0; i < count; i++) {
