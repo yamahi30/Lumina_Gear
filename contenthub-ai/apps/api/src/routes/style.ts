@@ -13,8 +13,12 @@ import { STYLE_TYPE_LABELS } from '@contenthub/constants';
 import { ClaudeService } from '../services/claude';
 import { isClaudeEnabled, isDriveEnabled } from '../config';
 import { getDriveService } from '../services/drive-helper';
+import { requireAuth } from './auth';
 
 export const styleRouter = Router();
+
+// 認証が必要なルートに適用
+styleRouter.use(requireAuth);
 
 // スタイルガイドファイルのパス設定
 const STYLE_GUIDE_DIR = path.resolve(process.cwd(), '../../..');

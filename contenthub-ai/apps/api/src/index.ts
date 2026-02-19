@@ -11,7 +11,7 @@ dotenv.config();
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 // 設定
-import { logApiMode } from './config';
+import { logApiMode, isDriveEnabled, isGeminiEnabled, isClaudeEnabled } from './config';
 
 // ルートのインポート
 import { authRouter } from './routes/auth';
@@ -35,6 +35,19 @@ app.use(cookieParser());
 // ヘルスチェック
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// デバッグ用: 設定確認
+app.get('/debug/config', (req, res) => {
+  res.json({
+    driveEnabled: isDriveEnabled(),
+    geminiEnabled: isGeminiEnabled(),
+    claudeEnabled: isClaudeEnabled(),
+    env: {
+      USE_GOOGLE_DRIVE: process.env.USE_GOOGLE_DRIVE,
+      GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ? '***設定済み***' : '未設定',
+    }
+  });
 });
 
 // APIルート

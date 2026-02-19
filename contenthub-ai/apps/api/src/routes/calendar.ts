@@ -8,6 +8,9 @@ import { requireAuth } from './auth';
 
 export const calendarRouter = Router();
 
+// 認証が必要なルートに適用
+calendarRouter.use(requireAuth);
+
 /**
  * コンテンツカレンダー生成
  * POST /api/content-calendar/generate

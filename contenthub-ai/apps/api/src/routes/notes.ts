@@ -6,8 +6,12 @@ import { generateId } from '@contenthub/utils';
 import { ClaudeService } from '../services/claude';
 import { isDriveEnabled } from '../config';
 import { getDriveService } from '../services/drive-helper';
+import { requireAuth } from './auth';
 
 export const notesRouter = Router();
+
+// 認証が必要なルートに適用
+notesRouter.use(requireAuth);
 
 // Claudeサービスインスタンス
 const claudeService = new ClaudeService();

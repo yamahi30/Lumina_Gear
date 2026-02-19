@@ -6,8 +6,12 @@ import { generateId } from '@contenthub/utils';
 import { GeminiService } from '../services/gemini';
 import { isGeminiEnabled, isDriveEnabled } from '../config';
 import { getDriveService } from '../services/drive-helper';
+import { requireAuth } from './auth';
 
 export const postsRouter = Router();
+
+// 認証が必要なルートに適用
+postsRouter.use(requireAuth);
 
 // 保存データのディレクトリ
 const SAVED_POSTS_DIR = path.resolve(process.cwd(), '../../data/saved-posts');
@@ -144,10 +148,14 @@ postsRouter.post('/save', async (req, res) => {
     // Google Driveに保存（有効な場合）
     if (isDriveEnabled()) {
       try {
+        console.log('Drive is enabled, attempting to save...');
+        console.log('User in request:', (req as any).user?.id);
         const driveService = await getDriveService(req);
         if (driveService) {
           await driveService.saveSavedPosts(platform, savedPosts);
           console.log('Saved posts synced to Google Drive');
+        } else {
+          console.log('Drive service is null - no Google tokens available');
         }
       } catch (driveError) {
         console.error('Failed to save posts to Drive:', driveError);
