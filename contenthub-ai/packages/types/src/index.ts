@@ -60,11 +60,6 @@ export interface SavedPost extends GeneratedPost {
   saved_at: string;
 }
 
-export interface PostFeedback {
-  good_posts: GeneratedPost[];
-  rejected_posts: GeneratedPost[];
-}
-
 // 文体学習関連
 export type StyleType =
   | 'note_free'
@@ -74,8 +69,8 @@ export type StyleType =
   | 'x_style'
   | 'threads_style';
 
-// スタイルガイドのプラットフォーム（簡易版）
-export type StyleGuideType = 'x' | 'threads' | 'note';
+// スタイルガイドのプラットフォーム（6種類）
+export type StyleGuideType = 'x' | 'threads' | 'note_free' | 'note_affiliate' | 'note_membership' | 'note_paid';
 
 export interface LearnedCharacteristics {
   // 文体特性
@@ -176,4 +171,117 @@ export interface CategoryConfig {
 export interface CategorySettings {
   categories: CategoryConfig[];
   updated_at: string;
+}
+
+// 市場調査
+export interface MarketResearch {
+  content: string;               // 市場調査・トレンド情報
+  updated_at: string;
+}
+
+// 競合分析
+export interface CompetitorAnalysis {
+  content: string;               // 競合分析情報
+  updated_at: string;
+}
+
+// カスタム指示
+export interface CustomInstructions {
+  content: string;               // AIへのカスタム指示
+  updated_at: string;
+}
+
+// マイアカウント情報
+export interface MyAccountInfo {
+  account_policy: string;        // アカウント方針
+  content_pillars: string;       // 発信の軸・テーマ
+  operation_rules: string;       // 運用ルール
+  brand_voice: string;           // ブランドボイス・トーン
+  updated_at: string;
+}
+
+// ペルソナデータ（ターゲット読者の人物像）
+export interface PersonaData {
+  id?: string;                   // ペルソナID（複数保存時に使用）
+  name?: string;                 // ペルソナ名（識別用）
+  ageRange: string;              // 年代
+  gender: string;                // 性別
+  occupation: string;            // 職業・立場
+  problems: string[];            // 悩み・課題
+  interests: string[];           // 興味・関心
+  personaExample: {              // ペルソナ例
+    name: string;
+    age: number;
+    job: string;
+    description: string;
+  };
+  updated_at: string;
+}
+
+// 保存されたペルソナ一覧
+export interface PersonaList {
+  personas: PersonaData[];
+  updated_at: string;
+}
+
+// コンテキスト管理（全設定を統合したもの - カレンダー生成時に使用）
+export interface ContentContext {
+  market_research: string;       // 市場調査・トレンド
+  custom_instructions: string;   // カスタム指示
+  persona?: PersonaData;         // ペルソナ情報
+  updated_at: string;
+}
+
+// カレンダー生成用プラットフォームタイプ
+export type CalendarPlatformType =
+  | 'x'
+  | 'threads'
+  | 'note_free_no_affiliate'
+  | 'note_free_with_affiliate'
+  | 'note_membership'
+  | 'note_paid';
+
+// 投稿済み（良い投稿）
+export interface PostedPost extends GeneratedPost {
+  posted_at: string;
+}
+
+// API使用量トラッキング
+export type ApiProvider = 'gemini' | 'claude' | 'openai';
+
+export interface ApiUsageRecord {
+  timestamp: string;
+  provider: ApiProvider;         // APIプロバイダ
+  function_name: string;         // 呼び出し元機能
+  model: string;                 // 使用モデル
+  input_tokens: number;          // 入力トークン数
+  output_tokens: number;         // 出力トークン数
+  total_tokens: number;          // 合計トークン数
+  estimated_cost_usd: number;    // 推定コスト（USD）
+}
+
+export interface ProviderUsage {
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+  cost_jpy: number;
+}
+
+export interface MonthlyUsage {
+  month: string;                 // YYYY-MM形式
+  total_calls: number;           // API呼び出し回数
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  estimated_cost_jpy: number;    // 日本円換算
+  by_provider: Record<ApiProvider, ProviderUsage>;  // プロバイダ別内訳
+  by_function: Record<string, {  // 機能別内訳
+    calls: number;
+    tokens: number;
+    cost_usd: number;
+  }>;
+  records: ApiUsageRecord[];     // 詳細レコード
 }

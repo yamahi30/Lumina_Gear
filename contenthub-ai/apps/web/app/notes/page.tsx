@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Sparkles, Send, RefreshCw, Copy, Check, FileText, AlertCircle } from 'lucide-react';
+import { useState, useRef, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Sparkles, Send, RefreshCw, Copy, Check, FileText, AlertCircle, CalendarDays } from 'lucide-react';
 import { Header } from '@/components/shared/Header';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import {
@@ -18,12 +19,66 @@ const NOTE_TYPE_TABS: { type: NoteArticleType; label: string; description: strin
 ];
 
 export default function ArticleCreatePage() {
+  return (
+    <Suspense fallback={<ArticlePageLoading />}>
+      <ArticlePageContent />
+    </Suspense>
+  );
+}
+
+function ArticlePageLoading() {
+  return (
+    <AuthGuard>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <Header />
+        <main className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center py-20">
+            <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        </main>
+      </div>
+    </AuthGuard>
+  );
+}
+
+function ArticlePageContent() {
+  const searchParams = useSearchParams();
+  const fromCalendar = searchParams.get('from') === 'calendar';
+
   // 記事タイプ選択
   const [selectedType, setSelectedType] = useState<NoteArticleType>('free_no_affiliate');
 
   // 入力フィールド
   const [titleIdea, setTitleIdea] = useState('');
   const [contentIdea, setContentIdea] = useState('');
+
+  // カレンダーから条件適用状態
+  const [calendarConditionApplied, setCalendarConditionApplied] = useState(false);
+
+  // カレンダーからの条件を適用
+  useEffect(() => {
+    if (fromCalendar && !calendarConditionApplied) {
+      try {
+        const calendarCondition = sessionStorage.getItem('calendarNoteCondition');
+        if (calendarCondition) {
+          const parsed = JSON.parse(calendarCondition);
+          // タイトル案を設定
+          if (parsed.title_idea) {
+            setTitleIdea(parsed.title_idea);
+          }
+          // カテゴリから内容のヒントを設定
+          if (parsed.category) {
+            setContentIdea(`カテゴリ: ${parsed.category}`);
+          }
+          // 使用済みの条件を削除
+          sessionStorage.removeItem('calendarNoteCondition');
+          setCalendarConditionApplied(true);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [fromCalendar, calendarConditionApplied]);
 
   // 生成結果
   const [generatedArticle, setGeneratedArticle] = useState('');
@@ -167,6 +222,21 @@ export default function ArticleCreatePage() {
               AIがNOTE記事を生成します。直接編集やブラッシュアップ指示も可能です。
             </p>
           </div>
+
+          {/* カレンダーからの遷移バナー */}
+          {fromCalendar && calendarConditionApplied && (
+            <div className="mb-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center gap-3">
+              <CalendarDays className="w-5 h-5 text-indigo-600" />
+              <div>
+                <p className="text-sm font-medium text-indigo-800">
+                  カレンダーから条件を取り込みました
+                </p>
+                <p className="text-xs text-indigo-600 mt-0.5">
+                  タイトル案に内容が自動入力されています
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* 記事タイプタブ */}
           <div className="flex flex-wrap gap-2 mb-6">

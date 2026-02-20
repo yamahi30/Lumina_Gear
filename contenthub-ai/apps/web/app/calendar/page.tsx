@@ -1,81 +1,91 @@
 'use client';
 
 import { useState } from 'react';
-import type { CalendarData, FrequencySettings, CalendarPost } from '@contenthub/types';
+import type { CalendarData, CalendarPlatformType } from '@contenthub/types';
 import { Header } from '@/components/shared/Header';
-import { CalendarForm } from '@/components/calendar/CalendarForm';
+import { AuthGuard } from '@/components/auth/AuthGuard';
+import { CalendarForm, type CalendarGenerateRequest } from '@/components/calendar/CalendarForm';
 import { CalendarTable } from '@/components/calendar/CalendarTable';
 import { useGenerateCalendar, useRegenerateRow } from '@/hooks/api/useCalendar';
 
+// 媒体ごとのカレンダーを保持
+type CalendarStore = Partial<Record<CalendarPlatformType, CalendarData>>;
+
 export default function CalendarPage() {
-  const [generatedCalendar, setGeneratedCalendar] = useState<CalendarData | null>(null);
+  const [calendars, setCalendars] = useState<CalendarStore>({});
+  const [currentPlatform, setCurrentPlatform] = useState<CalendarPlatformType | null>(null);
   const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null);
-  const [loadingWeek, setLoadingWeek] = useState<number | null>(null);
 
   const generateMutation = useGenerateCalendar();
   const regenerateRowMutation = useRegenerateRow();
 
-  const handleGenerate = (
-    startDate: string,
-    settings: FrequencySettings,
-    weekRange?: { start: number; end: number }
-  ) => {
-    // 週単位生成の場合、週のインデックスを計算
-    if (weekRange) {
-      setLoadingWeek(Math.floor((weekRange.start - 1) / 7));
-    }
+  // 現在表示中のカレンダー
+  const currentCalendar = currentPlatform ? calendars[currentPlatform] : null;
+
+  const handleGenerate = (request: CalendarGenerateRequest) => {
+    setCurrentPlatform(request.platform);
 
     generateMutation.mutate(
-      { start_date: startDate, frequency_settings: settings, week_range: weekRange },
+      {
+        platform: request.platform,
+        start_date: request.startDate,
+        frequency: request.frequency,
+        apply_context: request.applyContext,
+      },
       {
         onSuccess: (data) => {
-          if (weekRange && generatedCalendar) {
-            // 既存のカレンダーに週のデータをマージ
-            const existingPosts = generatedCalendar.posts.filter(
-              (post) => {
-                const day = parseInt(post.date.split('-')[2], 10);
-                return day < weekRange.start || day > weekRange.end;
-              }
-            );
+          const existingCalendar = calendars[request.platform];
+
+          if (existingCalendar) {
+            // 既存のカレンダーに新しいデータをマージ（同じ日付のものは上書き）
+            const newDate = data.posts[0]?.date;
+            const existingPosts = existingCalendar.posts.filter((post) => post.date !== newDate);
             const mergedPosts = [...existingPosts, ...data.posts].sort((a, b) => {
               if (a.date !== b.date) return a.date.localeCompare(b.date);
               return (a.time || '').localeCompare(b.time || '');
             });
-            setGeneratedCalendar({ ...generatedCalendar, posts: mergedPosts });
+            setCalendars((prev) => ({
+              ...prev,
+              [request.platform]: { ...existingCalendar, posts: mergedPosts },
+            }));
           } else {
-            setGeneratedCalendar(data);
+            setCalendars((prev) => ({
+              ...prev,
+              [request.platform]: data,
+            }));
           }
-          setLoadingWeek(null);
         },
         onError: (error) => {
           alert(`エラー: ${error.message}`);
-          setLoadingWeek(null);
         },
       }
     );
   };
 
   const handleRegenerateRow = (rowIndex: number, instruction?: string) => {
-    if (!generatedCalendar) return;
+    if (!currentCalendar || !currentPlatform) return;
 
     setRegeneratingIndex(rowIndex);
 
     regenerateRowMutation.mutate(
       {
-        calendar_id: generatedCalendar.calendar_id,
+        calendar_id: currentCalendar.calendar_id,
         row_index: rowIndex,
         custom_instruction: instruction,
-        current_post: generatedCalendar.posts[rowIndex],
+        current_post: currentCalendar.posts[rowIndex],
       },
       {
         onSuccess: (data) => {
-          // 再生成された行でカレンダーを更新
           if (data.regenerated_post) {
-            setGeneratedCalendar((prev) => {
-              if (!prev) return prev;
-              const newPosts = [...prev.posts];
+            setCalendars((prev) => {
+              const calendar = prev[currentPlatform];
+              if (!calendar) return prev;
+              const newPosts = [...calendar.posts];
               newPosts[rowIndex] = data.regenerated_post!;
-              return { ...prev, posts: newPosts };
+              return {
+                ...prev,
+                [currentPlatform]: { ...calendar, posts: newPosts },
+              };
             });
           }
           setRegeneratingIndex(null);
@@ -89,45 +99,46 @@ export default function CalendarPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <Header />
+    <AuthGuard>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <Header />
 
-      <main className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold tracking-tight mb-2">
-            コンテンツカレンダー
-          </h1>
-          <p className="text-sm text-gray-600">
-            1ヶ月分のSNS投稿計画を自動生成します
-          </p>
-        </div>
+        <main className="container mx-auto px-4 py-8">
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold tracking-tight mb-2">
+              コンテンツカレンダー
+            </h1>
+            <p className="text-sm text-gray-600">
+              媒体ごとにSNS投稿計画を自動生成します
+            </p>
+          </div>
 
-        <div className="space-y-8">
-          {/* 設定フォーム */}
-          <CalendarForm
-            onSubmit={handleGenerate}
-            isLoading={generateMutation.isPending}
-            loadingWeek={loadingWeek}
-          />
-
-          {/* エラー表示 */}
-          {generateMutation.isError && (
-            <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700">
-              エラーが発生しました: {generateMutation.error.message}
-            </div>
-          )}
-
-          {/* 生成結果 */}
-          {generatedCalendar && (
-            <CalendarTable
-              calendar={generatedCalendar}
-              onRegenerateRow={handleRegenerateRow}
-              isRegenerating={regenerateRowMutation.isPending}
-              regeneratingIndex={regeneratingIndex}
+          <div className="space-y-8">
+            {/* 設定フォーム */}
+            <CalendarForm
+              onSubmit={handleGenerate}
+              isLoading={generateMutation.isPending}
             />
-          )}
-        </div>
-      </main>
-    </div>
+
+            {/* エラー表示 */}
+            {generateMutation.isError && (
+              <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700">
+                エラーが発生しました: {generateMutation.error.message}
+              </div>
+            )}
+
+            {/* 生成結果 */}
+            {currentCalendar && (
+              <CalendarTable
+                calendar={currentCalendar}
+                onRegenerateRow={handleRegenerateRow}
+                isRegenerating={regenerateRowMutation.isPending}
+                regeneratingIndex={regeneratingIndex}
+              />
+            )}
+          </div>
+        </main>
+      </div>
+    </AuthGuard>
   );
 }

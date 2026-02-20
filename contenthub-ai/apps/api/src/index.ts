@@ -20,6 +20,11 @@ import { postsRouter } from './routes/posts';
 import { styleRouter } from './routes/style';
 import { notesRouter } from './routes/notes';
 import { settingsRouter } from './routes/settings';
+import { contextRouter } from './routes/context';
+import { dashboardRouter } from './routes/dashboard';
+import { myAccountRouter } from './routes/my-account';
+import { usageRouter } from './routes/usage';
+import { categoriesRouter } from './routes/categories';
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -57,6 +62,11 @@ app.use('/api/posts', postsRouter);
 app.use('/api/style-learning', styleRouter);
 app.use('/api/notes', notesRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/context', contextRouter);
+app.use('/api/dashboard', dashboardRouter);
+app.use('/api/my-account', myAccountRouter);
+app.use('/api/usage', usageRouter);
+app.use('/api/categories', categoriesRouter);
 
 // エラーハンドリング
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

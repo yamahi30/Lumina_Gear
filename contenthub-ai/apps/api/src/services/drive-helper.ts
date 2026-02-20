@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { Request } from 'express';
 import type { User } from '@contenthub/types';
-import { getUserGoogleTokens } from '../routes/auth';
+import { getUserGoogleTokens, updateUserGoogleTokens } from '../routes/auth';
 import { GoogleDriveService } from './google-drive';
 
 /**
@@ -37,8 +37,10 @@ export async function getDriveService(req: Request): Promise<GoogleDriveService 
 
     // トークンリフレッシュのリスナーを設定
     oauth2Client.on('tokens', (newTokens) => {
-      console.log('Google tokens refreshed');
-      // 新しいトークンを保存する処理を追加可能
+      console.log('Google tokens refreshed for user:', user.id);
+      if (newTokens.access_token) {
+        updateUserGoogleTokens(user.id, newTokens.access_token, newTokens.refresh_token || undefined);
+      }
     });
 
     return new GoogleDriveService(oauth2Client);

@@ -15,6 +15,7 @@ import {
   CHARACTER_LIMITS,
 } from '@contenthub/constants';
 import { formatDate, getDayOfWeek, getDaysInMonth, generateId } from '@contenthub/utils';
+import { usageTracker } from './usage-tracker';
 
 /**
  * Claude APIサービス
@@ -22,11 +23,28 @@ import { formatDate, getDayOfWeek, getDaysInMonth, generateId } from '@contenthu
  */
 export class ClaudeService {
   private client: Anthropic;
+  private modelName = 'claude-sonnet-4-20250514';
 
   constructor() {
     this.client = new Anthropic({
       apiKey: process.env.CLAUDE_API_KEY,
     });
+  }
+
+  /**
+   * API使用量をトラッキング
+   */
+  private async trackUsage(functionName: string, response: Anthropic.Message): Promise<void> {
+    try {
+      await usageTracker.trackUsage(
+        functionName,
+        response.model,
+        response.usage.input_tokens,
+        response.usage.output_tokens
+      );
+    } catch (error) {
+      console.error('Failed to track Claude usage:', error);
+    }
   }
 
   /**
@@ -97,10 +115,11 @@ ${styleData ? `\n## 過去の好評投稿の特徴\n${JSON.stringify(styleData, 
 
     try {
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: this.modelName,
         max_tokens: 8000,
         messages: [{ role: 'user', content: prompt }],
       });
+      await this.trackUsage('generateCalendar', response);
 
       // レスポンスからJSONを抽出
       const content = response.content[0];
@@ -165,10 +184,11 @@ ${styleData ? `\n## 文体の特徴\n- トーン: ${styleData.tone}\n- 語尾: $
 
       try {
         const response = await this.client.messages.create({
-          model: 'claude-sonnet-4-20250514',
+          model: this.modelName,
           max_tokens: 4000,
           messages: [{ role: 'user', content: prompt }],
         });
+        await this.trackUsage(`generatePosts_${platform}`, response);
 
         const content = response.content[0];
         if (content.type !== 'text') {
@@ -241,10 +261,11 @@ JSONのみを出力してください。
 
     try {
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: this.modelName,
         max_tokens: 1024,
         messages: [{ role: 'user', content: prompt }],
       });
+      await this.trackUsage('regenerateRow', response);
 
       const content = response.content[0];
       if (content.type !== 'text') {
@@ -293,10 +314,11 @@ ${samples.map((s, i) => `### サンプル${i + 1}\n${s}`).join('\n\n')}
 
     try {
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: this.modelName,
         max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }],
       });
+      await this.trackUsage('analyzeStyle', response);
 
       const content = response.content[0];
       if (content.type !== 'text') {
@@ -379,10 +401,11 @@ ${styleGuide ? `## 文体ガイド\n${styleGuide}` : ''}
 
     try {
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: this.modelName,
         max_tokens: 8000,
         messages: [{ role: 'user', content: prompt }],
       });
+      await this.trackUsage('generateNoteArticle', response);
 
       const content = response.content[0];
       if (content.type !== 'text') {
@@ -422,10 +445,11 @@ ${instruction}
 
     try {
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: this.modelName,
         max_tokens: 8000,
         messages: [{ role: 'user', content: prompt }],
       });
+      await this.trackUsage('brushUpNoteArticle', response);
 
       const content = response.content[0];
       if (content.type !== 'text') {
@@ -498,11 +522,12 @@ ${currentGuide || '（まだ文体ガイドが設定されていません）'}
 
     try {
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: this.modelName,
         max_tokens: 8000,
         system: systemPrompt,
         messages,
       });
+      await this.trackUsage('styleLearningChat', response);
 
       const content = response.content[0];
       if (content.type !== 'text') {

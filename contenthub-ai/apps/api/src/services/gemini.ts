@@ -1,13 +1,17 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, GenerateContentResult } from '@google/generative-ai';
 import type {
   FrequencySettings,
   CalendarPost,
   PostCondition,
   GeneratedPost,
   LearnedCharacteristics,
+  ContentContext,
+  PostedPost,
+  CalendarPlatformType,
 } from '@contenthub/types';
 import { getDaysInMonth, formatDate, getDayOfWeek, generateId } from '@contenthub/utils';
 import { CHARACTER_LIMITS } from '@contenthub/constants';
+import { usageTracker } from './usage-tracker';
 
 /**
  * Gemini APIサービス
@@ -16,15 +20,35 @@ import { CHARACTER_LIMITS } from '@contenthub/constants';
 export class GeminiService {
   private client: GoogleGenerativeAI;
   private model: ReturnType<GoogleGenerativeAI['getGenerativeModel']>;
+  private modelName = 'gemini-2.0-flash';
 
   constructor() {
     this.client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
     this.model = this.client.getGenerativeModel({
-      model: 'gemini-2.0-flash',
+      model: this.modelName,
       generationConfig: {
         responseMimeType: 'application/json',
       },
     });
+  }
+
+  /**
+   * API使用量をトラッキング
+   */
+  private async trackUsage(functionName: string, result: GenerateContentResult): Promise<void> {
+    try {
+      const usage = result.response.usageMetadata;
+      if (usage) {
+        await usageTracker.trackUsage(
+          functionName,
+          this.modelName,
+          usage.promptTokenCount || 0,
+          usage.candidatesTokenCount || 0
+        );
+      }
+    } catch (error) {
+      console.error('Failed to track usage:', error);
+    }
   }
 
   /**
@@ -51,12 +75,74 @@ export class GeminiService {
   }
 
   /**
+   * コンテキスト情報をプロンプト用に整形
+   */
+  private formatContextForPrompt(context?: ContentContext | null): string {
+    if (!context) return '';
+
+    const parts: string[] = [];
+
+    // ペルソナ情報
+    if (context.persona) {
+      const p = context.persona;
+      const personaText = [
+        `- 年代: ${p.ageRange}`,
+        `- 性別: ${p.gender}`,
+        `- 職業・立場: ${p.occupation}`,
+        p.problems.length > 0 ? `- 悩み・課題: ${p.problems.join('、')}` : '',
+        p.interests.length > 0 ? `- 興味・関心: ${p.interests.join('、')}` : '',
+        p.personaExample.description ? `- 具体的なイメージ: ${p.personaExample.description}` : '',
+      ].filter(Boolean).join('\n');
+      parts.push(`【ターゲットペルソナ】\n${personaText}`);
+    }
+
+    if (context.market_research?.trim()) {
+      parts.push(`【市場調査・トレンド】\n${context.market_research}`);
+    }
+    if (context.custom_instructions?.trim()) {
+      parts.push(`【カスタム指示】\n${context.custom_instructions}`);
+    }
+
+    if (parts.length === 0) return '';
+
+    return `\n## コンテキスト情報\n${parts.join('\n\n')}`;
+  }
+
+  /**
+   * 良い投稿の傾向をプロンプト用に整形
+   */
+  private formatGoodPostsForPrompt(goodPosts?: PostedPost[]): string {
+    if (!goodPosts || goodPosts.length === 0) return '';
+
+    const recentPosts = goodPosts.slice(-10); // 直近10件を使用
+    const categories = recentPosts.map(p => p.category).filter(Boolean);
+    const categoryCount: Record<string, number> = {};
+    categories.forEach(c => {
+      if (c) categoryCount[c] = (categoryCount[c] || 0) + 1;
+    });
+
+    const topCategories = Object.entries(categoryCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([cat]) => cat);
+
+    const sampleContents = recentPosts.slice(-3).map(p => `「${p.content.slice(0, 50)}...」`).join('\n');
+
+    return `
+## 過去に反響が良かった投稿の傾向
+- よく選ばれるカテゴリ: ${topCategories.join(', ')}
+- サンプル:
+${sampleContents}
+これらの傾向を参考にしつつ、新しいバリエーションも提案してください。`;
+  }
+
+  /**
    * コンテンツカレンダー生成（1週間ずつ生成してマージ）
    */
   async generateCalendar(
     startDate: Date,
     settings: FrequencySettings,
-    styleData?: Record<string, LearnedCharacteristics>
+    context?: ContentContext | null
   ): Promise<CalendarPost[]> {
     const year = startDate.getFullYear();
     const month = startDate.getMonth();
@@ -71,7 +157,7 @@ export class GeminiService {
 
       try {
         const weekPosts = await this.generateWeekCalendar(
-          year, month, weekStart, weekEnd, settings, dayNames
+          year, month, weekStart, weekEnd, settings, dayNames, context
         );
         allPosts.push(...weekPosts);
         console.log(`Week ${Math.ceil(weekStart / 7)} generated: ${weekPosts.length} posts`);
@@ -124,13 +210,14 @@ export class GeminiService {
     startDate: Date,
     startDay: number,
     endDay: number,
-    settings: FrequencySettings
+    settings: FrequencySettings,
+    context?: ContentContext | null
   ): Promise<CalendarPost[]> {
     const year = startDate.getFullYear();
     const month = startDate.getMonth();
     const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
 
-    return this.generateWeekCalendar(year, month, startDay, endDay, settings, dayNames);
+    return this.generateWeekCalendar(year, month, startDay, endDay, settings, dayNames, context);
   }
 
   /**
@@ -142,10 +229,12 @@ export class GeminiService {
     startDay: number,
     endDay: number,
     settings: FrequencySettings,
-    dayNames: string[]
+    dayNames: string[],
+    context?: ContentContext | null
   ): Promise<CalendarPost[]> {
     const monthStr = String(month + 1).padStart(2, '0');
     const categories = ['HSP', '家庭DX', 'IT・AI', 'マインド', 'NOTE誘導', 'Tips'];
+    const contextPrompt = this.formatContextForPrompt(context);
 
     const prompt = `${year}年${month + 1}月${startDay}日〜${endDay}日のSNS投稿カレンダーをJSON配列で出力。
 
@@ -154,11 +243,13 @@ export class GeminiService {
 - Threads投稿: 1日${settings.threads_per_day}回（時間: 10:00）
 - カテゴリ: ${categories.join(', ')}
 - 対象: HSP女性エンジニア
+${contextPrompt}
 
 JSON配列のみ出力（説明不要）:
 [{"date":"${year}-${monthStr}-${String(startDay).padStart(2, '0')}","day_of_week":"${dayNames[new Date(year, month, startDay).getDay()]}","time":"07:30","platform":"X","category":"HSP","title_idea":"具体的な投稿アイデア","purpose":"目的","hashtags":["#HSP"]}]`;
 
     const result = await this.model.generateContent(prompt);
+    await this.trackUsage('generateWeekCalendar', result);
     const text = result.response.text();
 
     try {
@@ -174,16 +265,130 @@ JSON配列のみ出力（説明不要）:
   }
 
   /**
+   * プラットフォーム別カレンダー生成
+   * X/Threads: 1日分の投稿を生成
+   * NOTE各種: 月単位で生成
+   */
+  async generatePlatformCalendar(
+    platform: CalendarPlatformType,
+    startDate: Date,
+    frequency: number,
+    context?: ContentContext | null
+  ): Promise<CalendarPost[]> {
+    const year = startDate.getFullYear();
+    const month = startDate.getMonth();
+    const day = startDate.getDate();
+    const daysInMonth = getDaysInMonth(year, month);
+    const monthStr = String(month + 1).padStart(2, '0');
+    const dayStr = String(day).padStart(2, '0');
+    const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+    const dayOfWeek = dayNames[startDate.getDay()];
+    const contextPrompt = this.formatContextForPrompt(context);
+
+    // 媒体タイプ別のラベル
+    const platformLabels: Record<CalendarPlatformType, string> = {
+      x: 'X',
+      threads: 'Threads',
+      note_free_no_affiliate: 'NOTE無料（アフィなし）',
+      note_free_with_affiliate: 'NOTE無料（アフィあり）',
+      note_membership: 'NOTEメンバーシップ',
+      note_paid: 'NOTE有料',
+    };
+
+    const categories = ['HSP', '家庭DX', 'IT・AI', 'マインド', 'NOTE誘導', 'Tips'];
+    const isDaily = platform === 'x' || platform === 'threads';
+
+    if (isDaily) {
+      // X, Threads: 指定日1日分のみ生成
+      const times = platform === 'x' ? ['07:30', '12:30', '21:00'] : ['10:00', '19:00'];
+      const targetDescription = context?.persona
+        ? `上記ペルソナに該当するターゲット読者`
+        : 'ターゲット読者';
+
+      const prompt = `${year}年${month + 1}月${day}日（${dayOfWeek}）の${platformLabels[platform]}投稿を${frequency}件、JSON配列で出力。
+${contextPrompt}
+
+条件:
+- ${frequency}件の投稿案を生成
+- 投稿時間: ${times.slice(0, frequency).join(', ')}
+- カテゴリ: ${categories.join(', ')} からバランス良く選択
+- 対象: ${targetDescription}
+
+各投稿について、ターゲットに響く具体的で実用的なタイトル案を提案してください。
+
+JSON配列のみ出力（説明不要）:
+[{"date":"${year}-${monthStr}-${dayStr}","day_of_week":"${dayOfWeek}","time":"${times[0]}","platform":"${platform === 'x' ? 'X' : 'Threads'}","category":"HSP","title_idea":"具体的な投稿アイデア","purpose":"目的","hashtags":["#HSP"]}]`;
+
+      const result = await this.model.generateContent(prompt);
+      await this.trackUsage(`generateCalendar_${platform}`, result);
+      const text = result.response.text();
+
+      try {
+        return JSON.parse(text) as CalendarPost[];
+      } catch {
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) {
+          throw new Error('Failed to parse platform calendar JSON');
+        }
+        const cleanedJson = this.cleanJson(jsonMatch[0]);
+        return JSON.parse(cleanedJson) as CalendarPost[];
+      }
+    } else {
+      // NOTE各種: 月単位生成
+      const noteTypeLabel = platformLabels[platform];
+      const purpose = platform.includes('paid') || platform.includes('membership')
+        ? '収益化・ファン育成'
+        : '認知拡大・信頼構築';
+      const targetDescription = context?.persona
+        ? `上記ペルソナに該当するターゲット読者`
+        : 'ターゲット読者';
+
+      const prompt = `${year}年${month + 1}月の${noteTypeLabel}記事カレンダーをJSON配列で出力。
+${contextPrompt}
+
+条件:
+- 月${frequency}本の記事
+- カテゴリ: ${categories.join(', ')}
+- 対象: ${targetDescription}
+- 記事の目的: ${purpose}
+
+記事は月全体に分散させ、ターゲットに響く具体的なタイトル案と概要を提案してください。
+
+JSON配列のみ出力（説明不要）:
+[{"date":"${year}-${monthStr}-01","day_of_week":"${dayNames[new Date(year, month, 1).getDay()]}","time":"","platform":"NOTE","category":"HSP","title_idea":"記事タイトル案","purpose":"${purpose}","hashtags":["#NOTE","#HSP"]}]`;
+
+      const result = await this.model.generateContent(prompt);
+      await this.trackUsage(`generateCalendar_${platform}`, result);
+      const text = result.response.text();
+
+      try {
+        return JSON.parse(text) as CalendarPost[];
+      } catch {
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) {
+          throw new Error('Failed to parse NOTE calendar JSON');
+        }
+        const cleanedJson = this.cleanJson(jsonMatch[0]);
+        return JSON.parse(cleanedJson) as CalendarPost[];
+      }
+    }
+  }
+
+  /**
    * 投稿生成
    */
   async generatePosts(
     platform: 'x' | 'threads',
     conditions: PostCondition[],
     countPerCondition: number,
-    styleData?: LearnedCharacteristics
+    styleData?: LearnedCharacteristics,
+    context?: ContentContext | null,
+    goodPosts?: PostedPost[]
   ): Promise<Record<string, GeneratedPost[]>> {
     const maxLength = platform === 'x' ? CHARACTER_LIMITS.X : CHARACTER_LIMITS.Threads;
     const results: Record<string, GeneratedPost[]> = {};
+    const contextPrompt = this.formatContextForPrompt(context);
+    const goodPostsPrompt = this.formatGoodPostsForPrompt(goodPosts);
 
     for (const condition of conditions) {
       const prompt = `
@@ -204,6 +409,8 @@ ${platform === 'x' ? 'X（Twitter）' : 'Threads'}向けの投稿を${countPerCo
 - 共働き、家庭とキャリアの両立に悩んでいる
 
 ${styleData ? `\n## 文体の特徴\n- トーン: ${styleData.tone}\n- 語尾: ${styleData.sentence_endings.join(', ')}\n- 絵文字: ${styleData.emoji_usage}` : ''}
+${contextPrompt}
+${goodPostsPrompt}
 
 ## 出力形式
 以下のJSON配列のみを出力してください（説明文は不要）:
@@ -217,6 +424,7 @@ ${styleData ? `\n## 文体の特徴\n- トーン: ${styleData.tone}\n- 語尾: $
 
       try {
         const result = await this.model.generateContent(prompt);
+        await this.trackUsage(`generatePosts_${platform}`, result);
         const response = result.response;
         const text = response.text();
 
@@ -284,6 +492,7 @@ HSP（繊細さん）女性エンジニア
 
     try {
       const result = await this.model.generateContent(prompt);
+      await this.trackUsage('regenerateRow', result);
       const response = result.response;
       const text = response.text();
 
@@ -336,6 +545,7 @@ HSP（繊細さん）女性エンジニア
 
     try {
       const result = await this.model.generateContent(prompt);
+      await this.trackUsage('generatePersona', result);
       const response = result.response;
       return response.text();
     } catch (error) {

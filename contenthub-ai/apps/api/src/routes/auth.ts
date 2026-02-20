@@ -1,6 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { google } from 'googleapis';
 import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import path from 'path';
 import type { User, ApiResponse } from '@contenthub/types';
 
 export const authRouter = Router();
@@ -17,8 +19,45 @@ const SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
 ];
 
-// ユーザートークンストレージ（本番ではDBを使用）
-const userTokens = new Map<string, { accessToken: string; refreshToken: string }>();
+// トークン保存ファイルパス
+const TOKENS_DIR = path.resolve(process.cwd(), '../../data');
+const TOKENS_FILE = path.join(TOKENS_DIR, '.google-tokens.json');
+
+// ユーザートークンストレージ（ファイル永続化対応）
+interface TokenStorage {
+  [userId: string]: { accessToken: string; refreshToken: string };
+}
+
+let userTokens: TokenStorage = {};
+
+// トークンをファイルから読み込み
+function loadTokensFromFile(): void {
+  try {
+    if (fs.existsSync(TOKENS_FILE)) {
+      const content = fs.readFileSync(TOKENS_FILE, 'utf-8');
+      userTokens = JSON.parse(content);
+      console.log('Google tokens loaded from file');
+    }
+  } catch (error) {
+    console.error('Failed to load tokens from file:', error);
+    userTokens = {};
+  }
+}
+
+// トークンをファイルに保存
+function saveTokensToFile(): void {
+  try {
+    if (!fs.existsSync(TOKENS_DIR)) {
+      fs.mkdirSync(TOKENS_DIR, { recursive: true });
+    }
+    fs.writeFileSync(TOKENS_FILE, JSON.stringify(userTokens, null, 2), 'utf-8');
+  } catch (error) {
+    console.error('Failed to save tokens to file:', error);
+  }
+}
+
+// 初期化時にトークンを読み込み
+loadTokensFromFile();
 
 // OAuth2クライアント（遅延初期化）
 type OAuth2Client = InstanceType<typeof google.auth.OAuth2>;
@@ -132,12 +171,14 @@ authRouter.get('/callback', async (req, res) => {
       picture: userInfo.picture || undefined,
     };
 
-    // Google APIトークンを保存（Drive API用）
+    // Google APIトークンを保存（Drive API用）- ファイルにも永続化
     if (tokens.access_token) {
-      userTokens.set(user.id, {
+      userTokens[user.id] = {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || '',
-      });
+      };
+      saveTokensToFile();
+      console.log('Google tokens saved for user:', user.id);
     }
 
     // JWTトークン生成
@@ -171,8 +212,9 @@ authRouter.post('/logout', (req, res) => {
   if (token) {
     const user = verifyToken(token);
     if (user) {
-      // Google APIトークンを削除
-      userTokens.delete(user.id);
+      // Google APIトークンを削除（ファイルからも削除）
+      delete userTokens[user.id];
+      saveTokensToFile();
     }
   }
 
@@ -224,5 +266,17 @@ authRouter.get('/me', (req, res) => {
  * ユーザーのGoogle APIトークン取得（内部用）
  */
 export function getUserGoogleTokens(userId: string) {
-  return userTokens.get(userId);
+  return userTokens[userId];
+}
+
+/**
+ * トークンを更新（リフレッシュ時に使用）
+ */
+export function updateUserGoogleTokens(userId: string, accessToken: string, refreshToken?: string) {
+  const existing = userTokens[userId];
+  userTokens[userId] = {
+    accessToken,
+    refreshToken: refreshToken || existing?.refreshToken || '',
+  };
+  saveTokensToFile();
 }

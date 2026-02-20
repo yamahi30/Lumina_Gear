@@ -1,10 +1,124 @@
 import { Router } from 'express';
-import type { FrequencySettings, CalendarData, CalendarPost, ApiResponse } from '@contenthub/types';
+import type { CalendarData, CalendarPost, ApiResponse, ContentContext, MarketResearch, CustomInstructions, CalendarPlatformType, CompetitorAnalysis, PersonaData } from '@contenthub/types';
 import { formatDate, formatMonth, getDayOfWeek, getDaysInMonth } from '@contenthub/utils';
 import { GeminiService } from '../services/gemini';
 import { isGeminiEnabled, isDriveEnabled } from '../config';
 import { getDriveService } from '../services/drive-helper';
 import { requireAuth } from './auth';
+import fs from 'fs/promises';
+import path from 'path';
+
+// ローカルコンテキストファイルのパス
+const CONTEXT_DIR = path.resolve(process.cwd(), '../../data/context');
+
+// 媒体タイプから表示名を取得
+const PLATFORM_LABELS: Record<CalendarPlatformType, string> = {
+  x: 'X',
+  threads: 'Threads',
+  note_free_no_affiliate: 'NOTE無料（アフィなし）',
+  note_free_with_affiliate: 'NOTE無料（アフィあり）',
+  note_membership: 'NOTEメンバーシップ',
+  note_paid: 'NOTE有料',
+};
+
+// 日単位生成の媒体かどうか
+function isDailyPlatform(platform: CalendarPlatformType): boolean {
+  return platform === 'x' || platform === 'threads';
+}
+
+// コンテキストを読み込むヘルパー関数（市場調査、競合分析、カスタム指示、ペルソナを統合）
+async function loadContext(req: import('express').Request): Promise<ContentContext | null> {
+  let marketResearch = '';
+  let customInstructions = '';
+  let persona: PersonaData | undefined;
+
+  // Google Driveから読み込み
+  if (isDriveEnabled()) {
+    try {
+      const driveService = await getDriveService(req);
+      if (driveService) {
+        const mrData = await driveService.loadJson<MarketResearch>('Context', 'market-research.json');
+        if (mrData?.content) {
+          marketResearch = mrData.content;
+        }
+        const caData = await driveService.loadJson<CompetitorAnalysis>('Context', 'competitor-analysis.json');
+        if (caData?.content) {
+          marketResearch += '\n\n【競合分析】\n' + caData.content;
+        }
+        const ciData = await driveService.loadJson<CustomInstructions>('Context', 'custom-instructions.json');
+        if (ciData?.content) {
+          customInstructions = ciData.content;
+        }
+        const personaData = await driveService.loadJson<PersonaData>('Context', 'persona.json');
+        if (personaData) {
+          persona = personaData;
+        }
+        if (marketResearch || customInstructions || persona) {
+          console.log('Context loaded from Google Drive');
+          return {
+            market_research: marketResearch,
+            custom_instructions: customInstructions,
+            persona,
+            updated_at: new Date().toISOString(),
+          };
+        }
+      }
+    } catch (driveError) {
+      console.error('Failed to load context from Drive:', driveError);
+    }
+  }
+
+  // フォールバック: ローカルファイル
+  try {
+    const mrPath = path.join(CONTEXT_DIR, 'market-research.json');
+    const mrContent = await fs.readFile(mrPath, 'utf-8');
+    const mrData = JSON.parse(mrContent) as MarketResearch;
+    marketResearch = mrData.content || '';
+  } catch {
+    // ファイルが存在しない場合は無視
+  }
+
+  try {
+    const caPath = path.join(CONTEXT_DIR, 'competitor-analysis.json');
+    const caContent = await fs.readFile(caPath, 'utf-8');
+    const caData = JSON.parse(caContent) as CompetitorAnalysis;
+    if (caData.content) {
+      marketResearch += '\n\n【競合分析】\n' + caData.content;
+    }
+  } catch {
+    // ファイルが存在しない場合は無視
+  }
+
+  try {
+    const ciPath = path.join(CONTEXT_DIR, 'custom-instructions.json');
+    const ciContent = await fs.readFile(ciPath, 'utf-8');
+    const ciData = JSON.parse(ciContent) as CustomInstructions;
+    customInstructions = ciData.content || '';
+  } catch {
+    // ファイルが存在しない場合は無視
+  }
+
+  try {
+    const personaPath = path.join(CONTEXT_DIR, 'persona.json');
+    const personaContent = await fs.readFile(personaPath, 'utf-8');
+    persona = JSON.parse(personaContent) as PersonaData;
+  } catch {
+    // ファイルが存在しない場合は無視
+  }
+
+  if (marketResearch || customInstructions || persona) {
+    console.log('Context loaded from local files');
+    return {
+      market_research: marketResearch,
+      custom_instructions: customInstructions,
+      persona,
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  console.log('No context found');
+  return null;
+}
 
 export const calendarRouter = Router();
 
@@ -12,68 +126,80 @@ export const calendarRouter = Router();
 calendarRouter.use(requireAuth);
 
 /**
- * コンテンツカレンダー生成
+ * コンテンツカレンダー生成（媒体別）
  * POST /api/content-calendar/generate
  */
 calendarRouter.post('/generate', async (req, res) => {
   try {
-    const { start_date, frequency_settings, week_range } = req.body as {
+    const { platform, start_date, frequency, apply_context } = req.body as {
+      platform: CalendarPlatformType;
       start_date: string;
-      frequency_settings: FrequencySettings;
-      week_range?: { start: number; end: number };
+      frequency: number;
+      apply_context?: boolean;
     };
 
     // 入力検証
-    if (!start_date || !frequency_settings) {
+    if (!platform || !start_date || !frequency) {
       return res.status(400).json({
         status: 'error',
-        error: '開始日と頻度設定は必須です',
+        error: '媒体、開始日、投稿頻度は必須です',
       });
     }
 
-    // カレンダーID生成
     const startDate = new Date(start_date);
-    const calendarId = week_range
-      ? `calendar_${formatMonth(startDate)}_week${week_range.start}-${week_range.end}`
-      : `calendar_${formatMonth(startDate)}`;
+    const platformLabel = PLATFORM_LABELS[platform];
+
+    // カレンダーID生成（日単位の場合は日付を含める）
+    const calendarId = isDailyPlatform(platform)
+      ? `calendar_${platform}_${formatDate(startDate)}`
+      : `calendar_${platform}_${formatMonth(startDate)}`;
+
+    console.log(`Generating ${platformLabel} calendar...`);
 
     let posts: CalendarPost[];
 
-    // Gemini APIでカレンダー生成（コスト効率重視）
+    // コンテキストを読み込み（apply_contextがtrueの場合のみ）
+    let context: ContentContext | null = null;
+    if (apply_context !== false) {
+      context = await loadContext(req);
+      if (context) {
+        console.log('Using context for calendar generation');
+      }
+    }
+
+    // Gemini APIでカレンダー生成
     if (isGeminiEnabled()) {
       try {
         const geminiService = new GeminiService();
-        if (week_range) {
-          // 週単位で生成
-          console.log(`Generating calendar for week ${week_range.start}-${week_range.end} with Gemini API...`);
-          posts = await geminiService.generateWeek(startDate, week_range.start, week_range.end, frequency_settings);
-        } else {
-          // 月単位で生成
-          console.log('Generating calendar with Gemini API...');
-          posts = await geminiService.generateCalendar(startDate, frequency_settings);
-        }
+        posts = await geminiService.generatePlatformCalendar(
+          platform,
+          startDate,
+          frequency,
+          context
+        );
+        console.log(`Generated ${posts.length} posts for ${platformLabel}`);
       } catch (apiError) {
-        // APIエラー時はモックデータを使用
         console.error('Gemini API error, using mock data:', apiError);
-        posts = week_range
-          ? generateMockWeekPosts(startDate, week_range.start, week_range.end, frequency_settings)
-          : generateMockCalendarPosts(startDate, frequency_settings);
+        posts = generateMockPlatformPosts(platform, startDate, frequency);
       }
     } else {
       console.log('Gemini API key not set, using mock data...');
-      posts = week_range
-        ? generateMockWeekPosts(startDate, week_range.start, week_range.end, frequency_settings)
-        : generateMockCalendarPosts(startDate, frequency_settings);
+      posts = generateMockPlatformPosts(platform, startDate, frequency);
     }
 
     // レスポンスデータ
     const calendarData: CalendarData = {
       calendar_id: calendarId,
       start_date: start_date,
-      end_date: week_range
-        ? `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(week_range.end).padStart(2, '0')}`
-        : getEndOfMonth(startDate),
-      frequency_settings,
+      end_date: isDailyPlatform(platform) ? start_date : getEndOfMonth(startDate),
+      frequency_settings: {
+        x_per_day: platform === 'x' ? frequency : 0,
+        threads_per_day: platform === 'threads' ? frequency : 0,
+        note_free_no_affiliate_per_month: platform === 'note_free_no_affiliate' ? frequency : 0,
+        note_free_with_affiliate_per_month: platform === 'note_free_with_affiliate' ? frequency : 0,
+        note_membership_per_month: platform === 'note_membership' ? frequency : 0,
+        note_paid_per_month: platform === 'note_paid' ? frequency : 0,
+      },
       posts,
     };
 
@@ -87,7 +213,6 @@ calendarRouter.post('/generate', async (req, res) => {
         }
       } catch (driveError) {
         console.error('Failed to save calendar to Drive:', driveError);
-        // Drive保存に失敗してもレスポンスは返す
       }
     }
 
@@ -128,14 +253,12 @@ calendarRouter.post('/regenerate-row', async (req, res) => {
 
     let regeneratedPost: CalendarPost;
 
-    // Gemini APIで再生成（コスト効率重視）
     if (isGeminiEnabled()) {
       try {
         console.log('Regenerating row with Gemini API...');
         const geminiService = new GeminiService();
         regeneratedPost = await geminiService.regenerateRow(current_post, custom_instruction);
       } catch (apiError) {
-        // APIエラー時はモック再生成を使用
         console.error('Gemini API error, using mock regeneration:', apiError);
         regeneratedPost = generateMockRegeneratedPost(current_post, custom_instruction);
       }
@@ -169,13 +292,9 @@ calendarRouter.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // TODO: Google Driveから取得
-    // const driveService = new GoogleDriveService();
-    // const calendar = await driveService.loadCalendar(id);
-
     res.json({
       status: 'success',
-      data: null, // TODO: 実際のカレンダーデータ
+      data: null,
     });
   } catch (error) {
     console.error('Calendar fetch error:', error);
@@ -217,106 +336,55 @@ function generateMockRegeneratedPost(
   };
 }
 
-// 仮のカレンダーデータ生成（テスト用）
-function generateMockCalendarPosts(startDate: Date, settings: FrequencySettings): CalendarPost[] {
-  const posts: CalendarPost[] = [];
-  const year = startDate.getFullYear();
-  const month = startDate.getMonth();
-  const daysInMonth = getDaysInMonth(year, month);
-
-  const xTimes = ['07:30', '12:30', '21:00'];
-  const categories = ['HSP', '家庭DX', 'IT・AI', 'マインド', 'NOTE誘導', 'Tips'] as const;
-
-  for (let day = 1; day <= daysInMonth; day++) {
-    const date = new Date(year, month, day);
-    const dateStr = formatDate(date);
-    const dayOfWeek = getDayOfWeek(date);
-
-    // X投稿
-    for (let i = 0; i < settings.x_per_day; i++) {
-      posts.push({
-        date: dateStr,
-        day_of_week: dayOfWeek,
-        time: xTimes[i] || '12:00',
-        platform: 'X',
-        category: categories[Math.floor(Math.random() * categories.length)],
-        title_idea: `X投稿案 ${day}-${i + 1}`,
-        purpose: '共感形成 → NOTE誘導',
-        hashtags: ['#HSP', '#AI活用'],
-      });
-    }
-
-    // Threads投稿
-    for (let i = 0; i < settings.threads_per_day; i++) {
-      posts.push({
-        date: dateStr,
-        day_of_week: dayOfWeek,
-        time: '10:00',
-        platform: 'Threads',
-        category: categories[Math.floor(Math.random() * categories.length)],
-        title_idea: `Threads投稿案 ${day}`,
-        purpose: '深い共感形成',
-        hashtags: ['#HSP', '#キャリア'],
-      });
-    }
-  }
-
-  return posts;
-}
-
-// 週単位のモックデータ生成
-function generateMockWeekPosts(
+// 媒体別モックデータ生成
+function generateMockPlatformPosts(
+  platform: CalendarPlatformType,
   startDate: Date,
-  startDay: number,
-  endDay: number,
-  settings: FrequencySettings
+  frequency: number
 ): CalendarPost[] {
   const posts: CalendarPost[] = [];
   const year = startDate.getFullYear();
   const month = startDate.getMonth();
+  const day = startDate.getDate();
 
-  const xTimes = ['07:30', '12:30', '21:00'];
   const categories = ['HSP', '家庭DX', 'IT・AI', 'マインド', 'NOTE誘導', 'Tips'] as const;
-  const titles = [
-    'HSPさんの心に響く言葉',
-    '時短家電で家事効率UP',
-    'AI活用で仕事を効率化',
-    '自分を大切にする習慣',
-    '新しい記事を公開しました',
-    '今日のちょっとしたTips',
-  ];
 
-  for (let day = startDay; day <= endDay; day++) {
-    const date = new Date(year, month, day);
-    const dateStr = formatDate(date);
-    const dayOfWeek = getDayOfWeek(date);
+  if (isDailyPlatform(platform)) {
+    // X, Threads: 指定日の1日分のみ生成
+    const times = platform === 'x' ? ['07:30', '12:30', '21:00'] : ['10:00', '19:00'];
+    const dateStr = formatDate(startDate);
+    const dayOfWeek = getDayOfWeek(startDate);
 
-    // X投稿
-    for (let i = 0; i < settings.x_per_day; i++) {
-      const catIndex = (day + i) % categories.length;
+    for (let i = 0; i < frequency; i++) {
       posts.push({
         date: dateStr,
         day_of_week: dayOfWeek,
-        time: xTimes[i] || '12:00',
-        platform: 'X',
-        category: categories[catIndex],
-        title_idea: `${titles[catIndex]}（${month + 1}/${day}）`,
-        purpose: '共感形成 → NOTE誘導',
-        hashtags: ['#HSP', '#AI活用'],
+        time: times[i % times.length],
+        platform: platform === 'x' ? 'X' : 'Threads',
+        category: categories[(day + i) % categories.length],
+        title_idea: `${platform === 'x' ? 'X' : 'Threads'}投稿案（${month + 1}/${day}）#${i + 1}`,
+        purpose: platform === 'x' ? '共感形成 → NOTE誘導' : '深い共感形成',
+        hashtags: ['#HSP', '#繊細さん'],
       });
     }
+  } else {
+    // NOTE: 月単位
+    const noteTypeLabel = PLATFORM_LABELS[platform];
+    for (let i = 0; i < frequency; i++) {
+      const publishDay = Math.floor((getDaysInMonth(year, month) / frequency) * i) + 1;
+      const date = new Date(year, month, publishDay);
+      const dateStr = formatDate(date);
+      const dayOfWeek = getDayOfWeek(date);
 
-    // Threads投稿
-    for (let i = 0; i < settings.threads_per_day; i++) {
       posts.push({
         date: dateStr,
         day_of_week: dayOfWeek,
-        time: '10:00',
-        platform: 'Threads',
-        category: categories[(day + 3) % categories.length],
-        title_idea: `Threadsで深掘り投稿（${month + 1}/${day}）`,
-        purpose: '深い共感形成',
-        hashtags: ['#繊細さん', '#キャリア'],
+        time: '',
+        platform: 'NOTE',
+        category: categories[i % categories.length],
+        title_idea: `${noteTypeLabel}記事案 #${i + 1}`,
+        purpose: platform.includes('paid') || platform.includes('membership') ? '収益化' : '認知拡大',
+        hashtags: ['#NOTE', '#HSP'],
       });
     }
   }

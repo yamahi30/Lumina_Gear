@@ -25,7 +25,10 @@ const STYLE_GUIDE_DIR = path.resolve(process.cwd(), '../../..');
 const STYLE_GUIDE_FILES: Record<StyleGuideType, { label: string; fileName: string }> = {
   x: { label: 'X投稿', fileName: 'x_style_guide_v2.md' },
   threads: { label: 'Threads投稿', fileName: 'threads_style_guide_v2.md' },
-  note: { label: 'NOTE記事', fileName: 'note_style_guide.md' },
+  note_free: { label: 'NOTE無料記事（アフィなし）', fileName: 'note_free_style_guide.md' },
+  note_affiliate: { label: 'NOTE無料記事（アフィあり）', fileName: 'note_affiliate_style_guide.md' },
+  note_membership: { label: 'NOTEメンバーシップ記事', fileName: 'note_membership_style_guide.md' },
+  note_paid: { label: 'NOTE有料記事', fileName: 'note_paid_style_guide.md' },
 };
 
 // スタイル学習データの保存ディレクトリ
@@ -109,13 +112,32 @@ styleRouter.get('/guides/:type', async (req, res) => {
       });
     }
 
-    const filePath = path.join(STYLE_GUIDE_DIR, guideInfo.fileName);
-
     let content = '';
-    try {
-      content = await fs.readFile(filePath, 'utf-8');
-    } catch {
-      content = '';
+
+    // Google Driveから読み込み（有効な場合）
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          const driveData = await driveService.loadJson<{ content: string }>('StyleLearning/Guides', `${type}.json`);
+          if (driveData?.content) {
+            content = driveData.content;
+            console.log(`✅ Style guide loaded from Google Drive: ${type}`);
+          }
+        }
+      } catch (driveError) {
+        console.error('Failed to load style guide from Drive:', driveError);
+      }
+    }
+
+    // フォールバック: ローカルファイル
+    if (!content) {
+      const filePath = path.join(STYLE_GUIDE_DIR, guideInfo.fileName);
+      try {
+        content = await fs.readFile(filePath, 'utf-8');
+      } catch {
+        content = '';
+      }
     }
 
     const response: ApiResponse<StyleGuideInfo> = {
@@ -155,8 +177,33 @@ styleRouter.put('/guides/:type', async (req, res) => {
       });
     }
 
+    // ローカルファイルに保存
     const filePath = path.join(STYLE_GUIDE_DIR, guideInfo.fileName);
     await fs.writeFile(filePath, content, 'utf-8');
+    console.log(`✅ Style guide saved locally: ${guideInfo.fileName}`);
+
+    // Google Driveに保存（有効な場合）
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          // StyleLearning/Guides フォルダに保存
+          await driveService.saveJson('StyleLearning/Guides', `${type}.json`, {
+            type,
+            label: guideInfo.label,
+            content,
+            updated_at: new Date().toISOString(),
+          });
+          console.log(`✅ Style guide saved to Google Drive: ${type}.json`);
+        } else {
+          console.log('⚠️ Drive service not available (no tokens?)');
+        }
+      } catch (driveError) {
+        console.error('Failed to save style guide to Drive:', driveError);
+      }
+    } else {
+      console.log('ℹ️ Google Drive disabled, saved locally only');
+    }
 
     res.json({
       status: 'success',

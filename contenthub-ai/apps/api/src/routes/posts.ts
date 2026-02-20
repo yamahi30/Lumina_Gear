@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import fs from 'fs/promises';
 import path from 'path';
-import type { PostCondition, GeneratedPost, SavedPost, ApiResponse } from '@contenthub/types';
+import type { PostCondition, GeneratedPost, SavedPost, ApiResponse, StyleLearningData, ContentContext, PostedPost } from '@contenthub/types';
 import { generateId } from '@contenthub/utils';
 import { GeminiService } from '../services/gemini';
 import { isGeminiEnabled, isDriveEnabled } from '../config';
@@ -15,6 +15,8 @@ postsRouter.use(requireAuth);
 
 // 保存データのディレクトリ
 const SAVED_POSTS_DIR = path.resolve(process.cwd(), '../../data/saved-posts');
+const STYLE_LEARNING_DATA_DIR = path.resolve(process.cwd(), '../../data/style-learning');
+const CONTEXT_FILE = path.resolve(process.cwd(), '../../data/context/context.json');
 
 // ディレクトリ確保
 async function ensureSavedPostsDir() {
@@ -23,6 +25,57 @@ async function ensureSavedPostsDir() {
   } catch {
     // 既存の場合は無視
   }
+}
+
+// 文体学習データを読み込む
+async function loadStyleData(platform: 'x' | 'threads'): Promise<StyleLearningData | null> {
+  const fileName = platform === 'x' ? 'x_style.json' : 'threads_style.json';
+  const filePath = path.join(STYLE_LEARNING_DATA_DIR, fileName);
+  try {
+    const content = await fs.readFile(filePath, 'utf-8');
+    return JSON.parse(content) as StyleLearningData;
+  } catch {
+    return null;
+  }
+}
+
+// コンテキストを読み込む
+async function loadContext(req: import('express').Request): Promise<ContentContext | null> {
+  // Google Driveから読み込み
+  if (isDriveEnabled()) {
+    try {
+      const driveService = await getDriveService(req);
+      if (driveService) {
+        const context = await driveService.loadContext();
+        if (context) return context;
+      }
+    } catch {
+      // フォールバック
+    }
+  }
+
+  // ローカルファイル
+  try {
+    const content = await fs.readFile(CONTEXT_FILE, 'utf-8');
+    return JSON.parse(content) as ContentContext;
+  } catch {
+    return null;
+  }
+}
+
+// 良い投稿を読み込む
+async function loadGoodPosts(req: import('express').Request, platform: 'x' | 'threads'): Promise<PostedPost[]> {
+  if (isDriveEnabled()) {
+    try {
+      const driveService = await getDriveService(req);
+      if (driveService) {
+        return await driveService.loadGoodPosts(platform);
+      }
+    } catch {
+      // フォールバック
+    }
+  }
+  return [];
 }
 
 // 保存済み投稿を読み込む
@@ -49,10 +102,12 @@ async function savePosts(platform: 'x' | 'threads', posts: SavedPost[]): Promise
  */
 postsRouter.post('/generate', async (req, res) => {
   try {
-    const { platform, conditions, count_per_condition } = req.body as {
+    const { platform, conditions, count_per_condition, apply_style, apply_context } = req.body as {
       platform: 'x' | 'threads';
       conditions: PostCondition[];
       count_per_condition: number;
+      apply_style?: boolean;
+      apply_context?: boolean;
     };
 
     // 入力検証
@@ -65,6 +120,30 @@ postsRouter.post('/generate', async (req, res) => {
 
     let posts: Record<string, GeneratedPost[]> = {};
 
+    // オプション: 文体学習データを読み込み
+    let styleData = null;
+    if (apply_style) {
+      styleData = await loadStyleData(platform);
+      if (styleData?.learned_characteristics) {
+        console.log('Applying learned style:', styleData.learned_characteristics.tone);
+      }
+    }
+
+    // オプション: コンテキストを読み込み
+    let context = null;
+    if (apply_context) {
+      context = await loadContext(req);
+      if (context) {
+        console.log('Applying context');
+      }
+    }
+
+    // 良い投稿の傾向を読み込み（常に適用）
+    const goodPosts = await loadGoodPosts(req, platform);
+    if (goodPosts.length > 0) {
+      console.log(`Using ${goodPosts.length} good posts for reference`);
+    }
+
     // Gemini APIで投稿生成（コスト効率重視）
     if (isGeminiEnabled()) {
       try {
@@ -73,7 +152,10 @@ postsRouter.post('/generate', async (req, res) => {
         posts = await geminiService.generatePosts(
           platform,
           conditions,
-          count_per_condition || 10
+          count_per_condition || 10,
+          styleData?.learned_characteristics,
+          context,
+          goodPosts
         );
       } catch (apiError) {
         console.error('Gemini API error, using fallback:', apiError);
@@ -186,9 +268,18 @@ postsRouter.post('/mark-posted', async (req, res) => {
       post: GeneratedPost;
     };
 
-    // TODO: 学習フィードバックに追加
-    // const driveService = new GoogleDriveService();
-    // await driveService.addToGoodPosts(platform, post);
+    // Google Driveに良い投稿として保存
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          await driveService.saveGoodPost(platform, post);
+          console.log('Good post saved to Google Drive');
+        }
+      } catch (driveError) {
+        console.error('Failed to save good post to Drive:', driveError);
+      }
+    }
 
     res.json({
       status: 'success',

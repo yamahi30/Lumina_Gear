@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
-import { Inbox } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { Inbox, CalendarDays } from 'lucide-react';
 import type { PostCondition, GeneratedPost } from '@contenthub/types';
 import { Header } from '@/components/shared/Header';
 import { AuthGuard } from '@/components/auth/AuthGuard';
@@ -25,6 +26,32 @@ const defaultCondition: PostCondition = {
 const STORAGE_KEY = 'contenthub_generated_posts';
 
 export default function PostsPage() {
+  return (
+    <Suspense fallback={<PostsPageLoading />}>
+      <PostsPageContent />
+    </Suspense>
+  );
+}
+
+function PostsPageLoading() {
+  return (
+    <AuthGuard>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <Header />
+        <main className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center py-20">
+            <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        </main>
+      </div>
+    </AuthGuard>
+  );
+}
+
+function PostsPageContent() {
+  const searchParams = useSearchParams();
+  const fromCalendar = searchParams.get('from') === 'calendar';
+
   const [platform, setPlatform] = useState<PostPlatform>('x');
   const [conditions, setConditions] = useState<PostCondition[]>([{ ...defaultCondition }]);
   const [countPerCondition, setCountPerCondition] = useState(10);
@@ -32,23 +59,56 @@ export default function PostsPage() {
   const [savingPostId, setSavingPostId] = useState<string>();
   const [markingPostId, setMarkingPostId] = useState<string>();
   const [isInitialized, setIsInitialized] = useState(false);
+  const [calendarConditionApplied, setCalendarConditionApplied] = useState(false);
+  const [applyStyle, setApplyStyle] = useState(false);
 
-  // sessionStorageから復元
+  // カレンダーからの条件を適用
   useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setGeneratedPosts(parsed.posts || {});
-        if (parsed.platform) {
-          setPlatform(parsed.platform);
+    if (fromCalendar && !calendarConditionApplied) {
+      try {
+        const calendarCondition = sessionStorage.getItem('calendarPostCondition');
+        if (calendarCondition) {
+          const parsed = JSON.parse(calendarCondition);
+          // プラットフォームを設定
+          if (parsed.platform === 'x' || parsed.platform === 'threads') {
+            setPlatform(parsed.platform);
+          }
+          // 条件をフォームに設定
+          const newCondition: PostCondition = {
+            category: parsed.category || 'HSP',
+            content_idea: parsed.content_idea || '',
+            purpose: parsed.purpose || '',
+            hashtags: parsed.hashtags || '#HSP #繊細さん',
+          };
+          setConditions([newCondition]);
+          // 使用済みの条件を削除
+          sessionStorage.removeItem('calendarPostCondition');
+          setCalendarConditionApplied(true);
         }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
+    }
+  }, [fromCalendar, calendarConditionApplied]);
+
+  // sessionStorageから復元（カレンダーからの遷移でない場合のみ）
+  useEffect(() => {
+    if (!fromCalendar) {
+      try {
+        const saved = sessionStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setGeneratedPosts(parsed.posts || {});
+          if (parsed.platform) {
+            setPlatform(parsed.platform);
+          }
+        }
+      } catch {
+        // ignore
+      }
     }
     setIsInitialized(true);
-  }, []);
+  }, [fromCalendar]);
 
   // sessionStorageに保存
   useEffect(() => {
@@ -75,6 +135,7 @@ export default function PostsPage() {
         platform,
         conditions,
         countPerCondition,
+        applyStyle,
       });
       if (result) {
         setGeneratedPosts(result);
@@ -176,6 +237,21 @@ export default function PostsPage() {
             </Link>
           </div>
 
+          {/* カレンダーからの遷移バナー */}
+          {fromCalendar && calendarConditionApplied && (
+            <div className="mb-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center gap-3">
+              <CalendarDays className="w-5 h-5 text-indigo-600" />
+              <div>
+                <p className="text-sm font-medium text-indigo-800">
+                  カレンダーから条件を取り込みました
+                </p>
+                <p className="text-xs text-indigo-600 mt-0.5">
+                  下の条件フォームに内容が自動入力されています
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* 左側: 条件入力 */}
             <div className="lg:col-span-1 space-y-6">
@@ -199,6 +275,25 @@ export default function PostsPage() {
                   countPerCondition={countPerCondition}
                   onCountChange={setCountPerCondition}
                 />
+              </div>
+
+              {/* 生成オプション */}
+              <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
+                <h2 className="font-semibold text-gray-900 mb-4">生成オプション</h2>
+                <div className="space-y-3">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={applyStyle}
+                      onChange={(e) => setApplyStyle(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-700">学習済み文体を適用</span>
+                      <p className="text-xs text-gray-500">文体学習で分析した特徴を反映します</p>
+                    </div>
+                  </label>
+                </div>
               </div>
 
               {/* ヒント */}

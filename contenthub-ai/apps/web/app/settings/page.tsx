@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, RotateCcw, Save, User, Tags, Sparkles, Eye } from 'lucide-react';
-import type { CategoryConfig } from '@contenthub/types';
+import { Plus, Trash2, RotateCcw, Save, User, Tags, Sparkles, Eye, BookOpen, FileText, Settings } from 'lucide-react';
+import type { CategoryConfig, MyAccountInfo } from '@contenthub/types';
 import { Header } from '@/components/shared/Header';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import {
@@ -13,14 +13,23 @@ import {
 import {
   usePersona,
   useUpdatePersona,
+  usePersonaList,
+  useAddPersona,
+  useDeletePersona,
   type PersonaSettings,
 } from '@/hooks/api/usePersona';
 import {
-  useCompetitors,
-  useAddCompetitor,
-  useDeleteCompetitor,
-  type CompetitorAccount,
-} from '@/hooks/api/useCompetitors';
+  useMarketResearch,
+  useUpdateMarketResearch,
+  useCustomInstructions,
+  useUpdateCustomInstructions,
+  useCompetitorAnalysis,
+  useUpdateCompetitorAnalysis,
+} from '@/hooks/api/useContext';
+import {
+  useMyAccount,
+  useUpdateMyAccount,
+} from '@/hooks/api/useMyAccount';
 
 // カラーパレット
 const COLORS = [
@@ -28,10 +37,10 @@ const COLORS = [
   '#14B8A6', '#6366F1', '#F97316', '#EF4444', '#84CC16',
 ];
 
-type SettingsTab = 'categories' | 'persona' | 'competitors';
+type SettingsTab = 'genres' | 'persona' | 'competitor-analysis' | 'market-research' | 'custom-instructions' | 'my-account';
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('categories');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('genres');
 
   return (
     <AuthGuard>
@@ -42,24 +51,24 @@ export default function SettingsPage() {
           <div className="mb-6">
             <h1 className="text-2xl font-bold tracking-tight mb-2">設定</h1>
             <p className="text-sm text-gray-600">
-              カテゴリ、ターゲット読者像、競合アカウントを設定できます
+              投稿ジャンル、ペルソナ、競合分析、市場調査、カスタム指示、マイアカウントを設定できます
             </p>
           </div>
 
           {/* タブ切り替え */}
           <div className="flex flex-wrap gap-2 mb-6">
             <button
-              onClick={() => setActiveTab('categories')}
+              onClick={() => setActiveTab('genres')}
               className={`
                 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all
-                ${activeTab === 'categories'
+                ${activeTab === 'genres'
                   ? 'bg-indigo-500 text-white shadow-sm'
                   : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
                 }
               `}
             >
               <Tags className="w-4 h-4" />
-              カテゴリ
+              投稿ジャンル
             </button>
             <button
               onClick={() => setActiveTab('persona')}
@@ -75,27 +84,72 @@ export default function SettingsPage() {
               ペルソナ
             </button>
             <button
-              onClick={() => setActiveTab('competitors')}
+              onClick={() => setActiveTab('competitor-analysis')}
               className={`
                 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all
-                ${activeTab === 'competitors'
+                ${activeTab === 'competitor-analysis'
                   ? 'bg-indigo-500 text-white shadow-sm'
                   : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
                 }
               `}
             >
               <Eye className="w-4 h-4" />
-              競合アカウント
+              競合分析
+            </button>
+            <button
+              onClick={() => setActiveTab('market-research')}
+              className={`
+                flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all
+                ${activeTab === 'market-research'
+                  ? 'bg-indigo-500 text-white shadow-sm'
+                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                }
+              `}
+            >
+              <BookOpen className="w-4 h-4" />
+              市場調査
+            </button>
+            <button
+              onClick={() => setActiveTab('custom-instructions')}
+              className={`
+                flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all
+                ${activeTab === 'custom-instructions'
+                  ? 'bg-indigo-500 text-white shadow-sm'
+                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                }
+              `}
+            >
+              <FileText className="w-4 h-4" />
+              カスタム指示
+            </button>
+            <button
+              onClick={() => setActiveTab('my-account')}
+              className={`
+                flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all
+                ${activeTab === 'my-account'
+                  ? 'bg-indigo-500 text-white shadow-sm'
+                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                }
+              `}
+            >
+              <Settings className="w-4 h-4" />
+              マイアカウント
             </button>
           </div>
 
           {/* タブコンテンツ */}
-          {activeTab === 'categories' ? (
-            <CategorySettings />
+          {activeTab === 'genres' ? (
+            <GenreSettings />
           ) : activeTab === 'persona' ? (
             <PersonaSettingsPanel />
+          ) : activeTab === 'competitor-analysis' ? (
+            <CompetitorAnalysisPanel />
+          ) : activeTab === 'market-research' ? (
+            <MarketResearchPanel />
+          ) : activeTab === 'custom-instructions' ? (
+            <CustomInstructionsPanel />
           ) : (
-            <CompetitorSettingsPanel />
+            <MyAccountPanel />
           )}
         </main>
       </div>
@@ -103,8 +157,8 @@ export default function SettingsPage() {
   );
 }
 
-// カテゴリ設定コンポーネント
-function CategorySettings() {
+// 投稿ジャンル設定コンポーネント（旧カテゴリ）
+function GenreSettings() {
   const { data: categorySettings, isLoading } = useCategories();
   const updateMutation = useUpdateCategories();
   const resetMutation = useResetCategories();
@@ -170,7 +224,7 @@ function CategorySettings() {
   };
 
   const handleReset = async () => {
-    if (confirm('カテゴリ設定をデフォルトに戻しますか？')) {
+    if (confirm('投稿ジャンル設定をデフォルトに戻しますか？')) {
       await resetMutation.mutateAsync();
       setHasChanges(false);
     }
@@ -194,7 +248,7 @@ function CategorySettings() {
         <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
-              <h2 className="font-semibold text-gray-900">カテゴリ一覧</h2>
+              <h2 className="font-semibold text-gray-900">投稿ジャンル一覧</h2>
               <p className="text-xs text-gray-500 mt-0.5">
                 合計: <span className={isValidTotal ? 'text-green-600' : 'text-red-600'}>{totalPercentage}%</span>
                 {!isValidTotal && ' （100%にしてください）'}
@@ -249,7 +303,7 @@ function CategorySettings() {
                   </div>
                 ))}
                 {categories.length === 0 && (
-                  <p className="text-center text-gray-500 py-8">カテゴリがありません</p>
+                  <p className="text-center text-gray-500 py-8">投稿ジャンルがありません</p>
                 )}
               </div>
             )}
@@ -283,10 +337,10 @@ function CategorySettings() {
 
       <div className="space-y-6">
         <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">カテゴリを追加</h2>
+          <h2 className="font-semibold text-gray-900 mb-4">投稿ジャンルを追加</h2>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">カテゴリ名</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">ジャンル名</label>
               <input
                 type="text"
                 value={newName}
@@ -350,9 +404,13 @@ function CategorySettings() {
 // ペルソナ設定コンポーネント
 function PersonaSettingsPanel() {
   const { data: personaData, isLoading } = usePersona();
+  const { data: personaListData, isLoading: isListLoading } = usePersonaList();
   const updateMutation = useUpdatePersona();
+  const addMutation = useAddPersona();
+  const deleteMutation = useDeletePersona();
 
   const [persona, setPersona] = useState<PersonaSettings | null>(null);
+  const [personaName, setPersonaName] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
   const [newProblem, setNewProblem] = useState('');
   const [newInterest, setNewInterest] = useState('');
@@ -361,6 +419,7 @@ function PersonaSettingsPanel() {
   useEffect(() => {
     if (personaData) {
       setPersona(personaData);
+      setPersonaName(personaData.name || '');
       setHasChanges(false);
     }
   }, [personaData]);
@@ -408,7 +467,27 @@ function PersonaSettingsPanel() {
 
   const handleSave = async () => {
     if (!persona) return;
-    await updateMutation.mutateAsync(persona);
+    await updateMutation.mutateAsync({ ...persona, name: personaName });
+    setHasChanges(false);
+  };
+
+  const handleAddToList = async () => {
+    if (!persona || !personaName.trim()) return;
+    await addMutation.mutateAsync({ ...persona, name: personaName.trim() });
+    setPersonaName('');
+  };
+
+  const handleDeletePersona = async (id: string) => {
+    if (!confirm('このペルソナを削除しますか？')) return;
+    await deleteMutation.mutateAsync(id);
+  };
+
+  const handleLoadPersona = (savedPersona: PersonaSettings) => {
+    setPersona({
+      ...savedPersona,
+      id: savedPersona.id,
+    });
+    setPersonaName(savedPersona.name || '');
     setHasChanges(false);
   };
 
@@ -463,11 +542,27 @@ function PersonaSettingsPanel() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* 左側: 基本情報 */}
-      <div className="space-y-6">
-        <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">基本属性</h2>
+    <div className="space-y-6">
+      {/* 説明パネル */}
+      <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+        <h3 className="text-sm font-medium text-indigo-800 mb-2">
+          ペルソナとは？
+        </h3>
+        <p className="text-sm text-indigo-700 mb-3">
+          ターゲット読者の具体的な人物像を設定します。ここで設定した情報は以下で活用されます：
+        </p>
+        <ul className="text-sm text-indigo-700 space-y-1 ml-4 list-disc">
+          <li>カレンダー生成時に、ターゲットに合ったタイトル・内容案・ハッシュタグを提案</li>
+          <li>投稿作成や記事作成で、ペルソナに響く内容を生成</li>
+          <li>一貫したターゲット設定でコンテンツの方向性を統一</li>
+        </ul>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 左側: 基本情報 */}
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
+            <h2 className="font-semibold text-gray-900 mb-4">基本属性</h2>
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">年代</label>
@@ -651,11 +746,182 @@ function PersonaSettingsPanel() {
           </div>
         </div>
 
-        {/* 保存ボタン */}
+        {/* ペルソナ名と保存 */}
+        <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">ペルソナ名（保存用）</label>
+            <input
+              type="text"
+              value={personaName}
+              onChange={(e) => {
+                setPersonaName(e.target.value);
+                setHasChanges(true);
+              }}
+              placeholder="例: メインターゲット、サブペルソナA など"
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm"
+            />
+          </div>
+
+          {hasChanges && (
+            <p className="text-xs text-amber-600">
+              変更があります。保存してください。
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={!hasChanges || updateMutation.isPending}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white transition-colors text-sm font-medium ${
+                hasChanges
+                  ? 'bg-indigo-500 hover:bg-indigo-600'
+                  : 'bg-gray-300 cursor-not-allowed'
+              }`}
+            >
+              {updateMutation.isPending ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              現在の設定を保存
+            </button>
+            <button
+              onClick={handleAddToList}
+              disabled={!personaName.trim() || addMutation.isPending}
+              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+            >
+              {addMutation.isPending ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Plus className="w-4 h-4" />
+              )}
+              一覧に追加
+            </button>
+          </div>
+        </div>
+
+        {/* 最終更新日時 */}
+        {persona.updated_at && (
+          <p className="text-xs text-gray-400 text-center">
+            最終更新: {new Date(persona.updated_at).toLocaleString('ja-JP')}
+          </p>
+        )}
+
+        {/* 保存済みペルソナ一覧 */}
+        <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 mb-4">保存済みペルソナ一覧</h2>
+          {isListLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : personaListData?.personas && personaListData.personas.length > 0 ? (
+            <div className="space-y-2">
+              {personaListData.personas.map((savedPersona) => (
+                <div
+                  key={savedPersona.id}
+                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {savedPersona.name || '名称未設定'}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {savedPersona.ageRange} / {savedPersona.gender} / {savedPersona.occupation}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleLoadPersona(savedPersona)}
+                    className="p-2 rounded-lg text-indigo-600 hover:bg-indigo-50 transition-colors"
+                    title="表示"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => savedPersona.id && handleDeletePersona(savedPersona.id)}
+                    disabled={deleteMutation.isPending}
+                    className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    title="削除"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 text-center py-4">
+              保存済みのペルソナはありません
+            </p>
+          )}
+        </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 競合分析パネル
+function CompetitorAnalysisPanel() {
+  const { data: competitorAnalysisData, isLoading } = useCompetitorAnalysis();
+  const updateMutation = useUpdateCompetitorAnalysis();
+
+  const [content, setContent] = useState('');
+  const [hasChanges, setHasChanges] = useState(false);
+
+  useEffect(() => {
+    if (competitorAnalysisData) {
+      setContent(competitorAnalysisData.content || '');
+      setHasChanges(false);
+    }
+  }, [competitorAnalysisData]);
+
+  const handleSave = async () => {
+    await updateMutation.mutateAsync(content);
+    setHasChanges(false);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* 説明 */}
+      <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+        <h3 className="text-sm font-medium text-indigo-800 mb-2">
+          競合分析とは？
+        </h3>
+        <p className="text-sm text-indigo-700">
+          競合アカウントの特徴、強み、差別化ポイントなどを記録します。他のツールで分析した結果をここに貼り付けて管理できます。
+        </p>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
+        <h2 className="font-semibold text-gray-900 mb-1">競合分析</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          競合アカウントの特徴、強み、差別化ポイント、参考にしたい点など
+        </p>
+        <textarea
+          value={content}
+          onChange={(e) => {
+            setContent(e.target.value);
+            setHasChanges(true);
+          }}
+          rows={15}
+          placeholder="例：&#10;【競合A：〇〇さん】&#10;・プラットフォーム：NOTE、X&#10;・フォロワー：X 1.2万人、NOTE月間5万PV&#10;・特徴：HSP×キャリア、落ち着いた文体&#10;・強み：有料note販売で月10万円以上&#10;・参考にしたい点：読者との距離感、共感の引き出し方&#10;&#10;【競合B：△△さん】&#10;・プラットフォーム：Threads、NOTE&#10;・特徴：家事効率化、明るいトーン&#10;・差別化ポイント：IT視点×HSP共感の掛け合わせで差別化"
+          className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm resize-none"
+        />
+      </div>
+
+      {/* 保存ボタン */}
+      <div className="flex justify-end">
         <button
           onClick={handleSave}
           disabled={!hasChanges || updateMutation.isPending}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+          className="flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
         >
           {updateMutation.isPending ? (
             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -665,229 +931,314 @@ function PersonaSettingsPanel() {
           保存
         </button>
       </div>
+
+      {/* 最終更新日時 */}
+      {competitorAnalysisData?.updated_at && (
+        <p className="text-xs text-gray-400 text-right">
+          最終更新: {new Date(competitorAnalysisData.updated_at).toLocaleString('ja-JP')}
+        </p>
+      )}
     </div>
   );
 }
 
-// 競合アカウント設定コンポーネント
-const PLATFORM_OPTIONS: { value: CompetitorAccount['platform']; label: string; color: string }[] = [
-  { value: 'note', label: 'NOTE', color: '#41C9B4' },
-  { value: 'x', label: 'X', color: '#000000' },
-  { value: 'threads', label: 'Threads', color: '#000000' },
-];
+// 市場調査パネル
+function MarketResearchPanel() {
+  const { data: marketResearchData, isLoading } = useMarketResearch();
+  const updateMutation = useUpdateMarketResearch();
 
-function CompetitorSettingsPanel() {
-  const { data: competitorData, isLoading } = useCompetitors();
-  const addMutation = useAddCompetitor();
-  const deleteMutation = useDeleteCompetitor();
+  const [content, setContent] = useState('');
+  const [hasChanges, setHasChanges] = useState(false);
 
-  const [newAccount, setNewAccount] = useState<Omit<CompetitorAccount, 'id'>>({
-    platform: 'note',
-    username: '',
-    displayName: '',
-    description: '',
-  });
+  useEffect(() => {
+    if (marketResearchData) {
+      setContent(marketResearchData.content || '');
+      setHasChanges(false);
+    }
+  }, [marketResearchData]);
 
-  const accounts = competitorData?.accounts || [];
-
-  const handleAddAccount = async () => {
-    if (!newAccount.username.trim()) return;
-    await addMutation.mutateAsync(newAccount);
-    setNewAccount({
-      platform: 'note',
-      username: '',
-      displayName: '',
-      description: '',
-    });
+  const handleSave = async () => {
+    await updateMutation.mutateAsync(content);
+    setHasChanges(false);
   };
 
-  const handleDeleteAccount = async (id: string) => {
-    await deleteMutation.mutateAsync(id);
-  };
-
-  // プラットフォームごとにグループ化
-  const groupedAccounts = {
-    note: accounts.filter((a) => a.platform === 'note'),
-    x: accounts.filter((a) => a.platform === 'x'),
-    threads: accounts.filter((a) => a.platform === 'threads'),
-  };
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* 左側: アカウント一覧 */}
-      <div className="lg:col-span-2 space-y-6">
-        {PLATFORM_OPTIONS.map((platform) => (
-          <div
-            key={platform.value}
-            className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden"
-          >
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: platform.color }}
-              />
-              <h2 className="font-semibold text-gray-900">{platform.label}</h2>
-              <span className="text-xs text-gray-500">
-                {groupedAccounts[platform.value].length}件
-              </span>
-            </div>
-
-            <div className="p-5">
-              {isLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                </div>
-              ) : groupedAccounts[platform.value].length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-4">
-                  まだ登録されていません
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {groupedAccounts[platform.value].map((account) => (
-                    <div
-                      key={account.id}
-                      className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {account.displayName || account.username}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate">
-                          @{account.username}
-                        </p>
-                        {account.description && (
-                          <p className="text-xs text-gray-600 mt-1">
-                            {account.description}
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => handleDeleteAccount(account.id)}
-                        disabled={deleteMutation.isPending}
-                        className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
+    <div className="space-y-6">
+      {/* 説明 */}
+      <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+        <h3 className="text-sm font-medium text-indigo-800 mb-2">
+          市場調査とは？
+        </h3>
+        <p className="text-sm text-indigo-700">
+          業界の動向、トレンド、競合分析の結果などを記録します。カレンダー生成時にAIへ渡され、より的確なコンテンツ提案に活用されます。
+        </p>
       </div>
 
-      {/* 右側: 新規追加 */}
-      <div className="space-y-6">
+      <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
+        <h2 className="font-semibold text-gray-900 mb-1">市場調査・トレンド分析</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          業界の動向、注目されているトピック、季節イベント、競合の動きなど
+        </p>
+        <textarea
+          value={content}
+          onChange={(e) => {
+            setContent(e.target.value);
+            setHasChanges(true);
+          }}
+          rows={15}
+          placeholder="例：&#10;【トレンド】&#10;・2024年は「セルフケア」「マインドフルネス」がトレンド&#10;・HSP関連のnote記事が増加傾向&#10;・年末は「振り返り」「目標設定」系が伸びる&#10;&#10;【競合分析】&#10;・Aさん：HSP×キャリア、落ち着いた文体、有料note販売&#10;・Bさん：家事効率化、明るいトーン、Threads強い&#10;・差別化：IT視点×HSP共感の掛け合わせ"
+          className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm resize-none"
+        />
+      </div>
+
+      {/* 保存ボタン */}
+      <div className="flex justify-end">
+        <button
+          onClick={handleSave}
+          disabled={!hasChanges || updateMutation.isPending}
+          className="flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+        >
+          {updateMutation.isPending ? (
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          保存
+        </button>
+      </div>
+
+      {/* 最終更新日時 */}
+      {marketResearchData?.updated_at && (
+        <p className="text-xs text-gray-400 text-right">
+          最終更新: {new Date(marketResearchData.updated_at).toLocaleString('ja-JP')}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// カスタム指示パネル
+function CustomInstructionsPanel() {
+  const { data: customInstructionsData, isLoading } = useCustomInstructions();
+  const updateMutation = useUpdateCustomInstructions();
+
+  const [content, setContent] = useState('');
+  const [hasChanges, setHasChanges] = useState(false);
+
+  useEffect(() => {
+    if (customInstructionsData) {
+      setContent(customInstructionsData.content || '');
+      setHasChanges(false);
+    }
+  }, [customInstructionsData]);
+
+  const handleSave = async () => {
+    await updateMutation.mutateAsync(content);
+    setHasChanges(false);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* 説明 */}
+      <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+        <h3 className="text-sm font-medium text-indigo-800 mb-2">
+          カスタム指示とは？
+        </h3>
+        <p className="text-sm text-indigo-700">
+          AIへの追加指示を設定します。避けたい表現、必ず含めたい要素、文体の指定などを記述すると、生成結果に反映されます。
+        </p>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
+        <h2 className="font-semibold text-gray-900 mb-1">カスタム指示</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          AIへの追加指示、避けたい表現、必ず含めたい要素など
+        </p>
+        <textarea
+          value={content}
+          onChange={(e) => {
+            setContent(e.target.value);
+            setHasChanges(true);
+          }}
+          rows={15}
+          placeholder="例：&#10;【文体】&#10;・「絶対」「必ず」など断定的な表現は避ける&#10;・共感→解決策→行動促進の流れを意識&#10;・専門用語は使わず、わかりやすく&#10;&#10;【トーン】&#10;・絵文字は控えめに（1投稿に1〜2個まで）&#10;・親しみやすいが馴れ馴れしくない&#10;・読者に寄り添う姿勢を大切に"
+          className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm resize-none"
+        />
+      </div>
+
+      {/* 保存ボタン */}
+      <div className="flex justify-end">
+        <button
+          onClick={handleSave}
+          disabled={!hasChanges || updateMutation.isPending}
+          className="flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+        >
+          {updateMutation.isPending ? (
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          保存
+        </button>
+      </div>
+
+      {/* 最終更新日時 */}
+      {customInstructionsData?.updated_at && (
+        <p className="text-xs text-gray-400 text-right">
+          最終更新: {new Date(customInstructionsData.updated_at).toLocaleString('ja-JP')}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// マイアカウントパネル
+function MyAccountPanel() {
+  const { data: myAccountData, isLoading } = useMyAccount();
+  const updateMutation = useUpdateMyAccount();
+
+  const [accountInfo, setAccountInfo] = useState<MyAccountInfo | null>(null);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  useEffect(() => {
+    if (myAccountData) {
+      setAccountInfo(myAccountData);
+      setHasChanges(false);
+    }
+  }, [myAccountData]);
+
+  const handleFieldChange = (field: keyof MyAccountInfo, value: string) => {
+    if (!accountInfo) return;
+    setAccountInfo({ ...accountInfo, [field]: value });
+    setHasChanges(true);
+  };
+
+  const handleSave = async () => {
+    if (!accountInfo) return;
+    await updateMutation.mutateAsync(accountInfo);
+    setHasChanges(false);
+  };
+
+  if (isLoading || !accountInfo) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* 説明 */}
+      <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+        <h3 className="text-sm font-medium text-indigo-800 mb-2">
+          マイアカウントとは？
+        </h3>
+        <p className="text-sm text-indigo-700">
+          あなたのSNSアカウントの方針、発信の軸、運用ルールを記録します。カレンダー生成や投稿作成時にAIへ渡され、一貫性のあるコンテンツ生成に活用されます。
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* アカウント方針 */}
         <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">アカウントを追加</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                プラットフォーム
-              </label>
-              <select
-                value={newAccount.platform}
-                onChange={(e) =>
-                  setNewAccount({ ...newAccount, platform: e.target.value as CompetitorAccount['platform'] })
-                }
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm"
-              >
-                {PLATFORM_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                ユーザー名 / URL <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={newAccount.username}
-                onChange={(e) => setNewAccount({ ...newAccount, username: e.target.value })}
-                placeholder="例: @example または URL"
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                表示名（任意）
-              </label>
-              <input
-                type="text"
-                value={newAccount.displayName}
-                onChange={(e) => setNewAccount({ ...newAccount, displayName: e.target.value })}
-                placeholder="例: 〇〇さん"
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                メモ（任意）
-              </label>
-              <textarea
-                value={newAccount.description}
-                onChange={(e) => setNewAccount({ ...newAccount, description: e.target.value })}
-                placeholder="例: HSP系で有料note販売、フォロワー1万人"
-                rows={2}
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm resize-none"
-              />
-            </div>
-
-            <button
-              onClick={handleAddAccount}
-              disabled={!newAccount.username.trim() || addMutation.isPending}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-500 text-white rounded-xl text-sm font-medium hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {addMutation.isPending ? (
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Plus className="w-4 h-4" />
-              )}
-              追加
-            </button>
-          </div>
+          <h2 className="font-semibold text-gray-900 mb-1">アカウント方針</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            アカウントの目的、ゴール、ミッションなど
+          </p>
+          <textarea
+            value={accountInfo.account_policy}
+            onChange={(e) => handleFieldChange('account_policy', e.target.value)}
+            rows={8}
+            placeholder="例：&#10;・HSP×ITのニッチで唯一無二のポジション確立&#10;・共感をベースに信頼を構築&#10;・最終的には有料noteやコンサルで収益化&#10;・月1万PV達成を目指す"
+            className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm resize-none"
+          />
         </div>
 
-        {/* ヒント */}
-        <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
-          <h3 className="text-sm font-medium text-indigo-800 mb-2">
-            選定のコツ
-          </h3>
-          <ul className="text-sm text-indigo-700 space-y-1">
-            <li>• 同ジャンルで活発に発信している人</li>
-            <li>• フォロワー5,000〜50,000人程度の中規模アカウント</li>
-            <li>• 「少し先を行く先輩」的な存在がおすすめ</li>
-          </ul>
+        {/* 発信の軸・テーマ */}
+        <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 mb-1">発信の軸・テーマ</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            メインテーマ、コンテンツの柱となるトピック
+          </p>
+          <textarea
+            value={accountInfo.content_pillars}
+            onChange={(e) => handleFieldChange('content_pillars', e.target.value)}
+            rows={8}
+            placeholder="例：&#10;【3つの柱】&#10;1. HSP×仕事術：繊細さを活かした働き方&#10;2. IT活用：ツールで日常を効率化&#10;3. マインドセット：自己肯定感を高める考え方"
+            className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm resize-none"
+          />
         </div>
 
-        {/* 登録数サマリー */}
+        {/* 運用ルール */}
         <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-3">登録状況</h2>
-          <div className="space-y-2">
-            {PLATFORM_OPTIONS.map((platform) => (
-              <div key={platform.value} className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">{platform.label}</span>
-                <span className="text-sm font-medium text-gray-900">
-                  {groupedAccounts[platform.value].length}件
-                </span>
-              </div>
-            ))}
-            <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">合計</span>
-              <span className="text-sm font-medium text-indigo-600">
-                {accounts.length}件
-              </span>
-            </div>
-          </div>
+          <h2 className="font-semibold text-gray-900 mb-1">運用ルール</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            投稿頻度、時間帯、NG事項など
+          </p>
+          <textarea
+            value={accountInfo.operation_rules}
+            onChange={(e) => handleFieldChange('operation_rules', e.target.value)}
+            rows={8}
+            placeholder="例：&#10;【投稿ルール】&#10;・X：毎日2投稿（朝7時、夜20時）&#10;・Threads：週3回&#10;・NOTE：週1回（日曜日）&#10;&#10;【NG事項】&#10;・政治・宗教の話題は避ける&#10;・否定的な表現は使わない"
+            className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm resize-none"
+          />
+        </div>
+
+        {/* ブランドボイス */}
+        <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 mb-1">ブランドボイス・トーン</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            文体、トーン、人格設定など
+          </p>
+          <textarea
+            value={accountInfo.brand_voice}
+            onChange={(e) => handleFieldChange('brand_voice', e.target.value)}
+            rows={8}
+            placeholder="例：&#10;【人格】&#10;・30代後半の落ち着いた女性&#10;・IT企業で働いた経験あり&#10;・HSP当事者として発信&#10;&#10;【トーン】&#10;・穏やかで優しい語り口&#10;・押し付けがましくない&#10;・読者の気持ちに寄り添う"
+            className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm resize-none"
+          />
         </div>
       </div>
+
+      {/* 保存ボタン */}
+      <div className="flex justify-end">
+        <button
+          onClick={handleSave}
+          disabled={!hasChanges || updateMutation.isPending}
+          className="flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+        >
+          {updateMutation.isPending ? (
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          保存
+        </button>
+      </div>
+
+      {/* 最終更新日時 */}
+      {accountInfo.updated_at && (
+        <p className="text-xs text-gray-400 text-right">
+          最終更新: {new Date(accountInfo.updated_at).toLocaleString('ja-JP')}
+        </p>
+      )}
     </div>
   );
 }

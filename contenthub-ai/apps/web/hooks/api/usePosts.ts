@@ -13,19 +13,27 @@ export function useGeneratePosts() {
       platform,
       conditions,
       countPerCondition,
+      applyStyle,
+      applyContext,
     }: {
       platform: PostPlatform;
       conditions: PostCondition[];
       countPerCondition: number;
+      applyStyle?: boolean;
+      applyContext?: boolean;
     }) => {
       return apiPost<Record<string, GeneratedPost[]>, {
         platform: PostPlatform;
         conditions: PostCondition[];
         count_per_condition: number;
+        apply_style?: boolean;
+        apply_context?: boolean;
       }>('/api/posts/generate', {
         platform,
         conditions,
         count_per_condition: countPerCondition,
+        apply_style: applyStyle,
+        apply_context: applyContext,
       });
     },
   });

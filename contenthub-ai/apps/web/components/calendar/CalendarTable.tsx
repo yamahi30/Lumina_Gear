@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { CalendarData, CalendarPost } from '@contenthub/types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/shared/Card';
 import { Button } from '@/components/shared/Button';
-import { Download, RefreshCw } from 'lucide-react';
+import { Download, RefreshCw, Pencil, FileText } from 'lucide-react';
 
 interface CalendarTableProps {
   calendar: CalendarData;
@@ -19,8 +20,34 @@ export function CalendarTable({
   isRegenerating,
   regeneratingIndex,
 }: CalendarTableProps) {
+  const router = useRouter();
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const [editInstruction, setEditInstruction] = useState('');
+
+  // X/Threads投稿作成ページへ遷移
+  const handleCreatePost = (post: CalendarPost) => {
+    // sessionStorageに条件を保存
+    const postCondition = {
+      platform: post.platform.toLowerCase() as 'x' | 'threads',
+      category: post.category,
+      content_idea: post.title_idea,
+      purpose: post.purpose,
+      hashtags: post.hashtags.join(' '),
+    };
+    sessionStorage.setItem('calendarPostCondition', JSON.stringify(postCondition));
+    router.push('/posts?from=calendar');
+  };
+
+  // NOTE記事作成ページへ遷移
+  const handleCreateNote = (post: CalendarPost) => {
+    // sessionStorageにタイトル案を保存
+    const noteCondition = {
+      title_idea: post.title_idea,
+      category: post.category,
+    };
+    sessionStorage.setItem('calendarNoteCondition', JSON.stringify(noteCondition));
+    router.push('/notes?from=calendar');
+  };
 
   const handleRegenerateRow = (index: number) => {
     if (onRegenerateRow) {
@@ -151,14 +178,36 @@ export function CalendarTable({
                         </div>
                       </div>
                     ) : (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditingRow(index)}
-                      >
-                        <RefreshCw className="w-3 h-3 mr-1" />
-                        修正
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditingRow(index)}
+                        >
+                          <RefreshCw className="w-3 h-3 mr-1" />
+                          修正
+                        </Button>
+                        {(post.platform === 'X' || post.platform === 'Threads') && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleCreatePost(post)}
+                          >
+                            <Pencil className="w-3 h-3 mr-1" />
+                            投稿作成
+                          </Button>
+                        )}
+                        {post.platform === 'NOTE' && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleCreateNote(post)}
+                          >
+                            <FileText className="w-3 h-3 mr-1" />
+                            記事作成
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </td>
                 </tr>

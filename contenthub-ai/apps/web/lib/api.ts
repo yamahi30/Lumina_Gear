@@ -59,3 +59,20 @@ export function apiPost<T, B = unknown>(endpoint: string, body: B): Promise<T> {
     body: JSON.stringify(body),
   });
 }
+
+/**
+ * PUT リクエスト
+ */
+export function apiPut<T, B = unknown>(endpoint: string, body: B): Promise<T> {
+  return apiRequest<T>(endpoint, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * DELETE リクエスト
+ */
+export function apiDelete<T>(endpoint: string): Promise<T> {
+  return apiRequest<T>(endpoint, { method: 'DELETE' });
+}

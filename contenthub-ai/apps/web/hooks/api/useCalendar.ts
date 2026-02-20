@@ -1,16 +1,17 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CalendarData, FrequencySettings } from '@contenthub/types';
+import type { CalendarData, CalendarPlatformType } from '@contenthub/types';
 import { apiPost, apiGet } from '@/lib/api';
 
 /**
  * カレンダー生成リクエスト
  */
 interface GenerateCalendarRequest {
+  platform: CalendarPlatformType;
   start_date: string;
-  frequency_settings: FrequencySettings;
-  week_range?: { start: number; end: number };
+  frequency: number;
+  apply_context?: boolean;
 }
 
 /**

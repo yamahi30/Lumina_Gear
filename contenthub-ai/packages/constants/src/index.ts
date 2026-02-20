@@ -1,4 +1,4 @@
-import type { PostCategory, StyleType, NoteType, Platform } from '@contenthub/types';
+import type { PostCategory, StyleType, StyleGuideType, NoteType, Platform } from '@contenthub/types';
 
 // プラットフォーム
 export const PLATFORMS: Platform[] = ['X', 'Threads', 'NOTE'];
@@ -45,6 +45,16 @@ export const STYLE_TYPE_LABELS: Record<StyleType, string> = {
   note_paid: 'NOTE有料記事',
   x_style: 'X投稿',
   threads_style: 'Threads投稿',
+};
+
+// スタイルガイドタイプの表示名
+export const STYLE_GUIDE_TYPE_LABELS: Record<StyleGuideType, string> = {
+  x: 'X投稿',
+  threads: 'Threads投稿',
+  note_free: 'NOTE無料（アフィなし）',
+  note_affiliate: 'NOTE無料（アフィあり）',
+  note_membership: 'NOTEメンバーシップ',
+  note_paid: 'NOTE有料',
 };
 
 // NOTE記事タイプ
@@ -118,9 +128,10 @@ export const DRIVE_PATHS = {
   CONTENT_CALENDAR: 'ContentCalendar',
   NOTE_IDEAS: 'NoteIdeas',
   STYLE_LEARNING: 'StyleLearning',
-  POST_LEARNING: 'PostLearning',
   SAVED_POSTS: 'SavedPosts',
   SETTINGS: 'Settings',
+  CONTEXT: 'Context',         // コンテキスト管理
+  GOOD_POSTS: 'GoodPosts',    // 投稿済み（良い投稿）
 };
 
 // 文字数制限

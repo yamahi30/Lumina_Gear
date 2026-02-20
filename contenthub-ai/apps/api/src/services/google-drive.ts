@@ -4,9 +4,11 @@ import type {
   CalendarData,
   NoteIdeasData,
   StyleLearningData,
-  PostFeedback,
   SavedPost,
   StyleType,
+  ContentContext,
+  GeneratedPost,
+  PostedPost,
 } from '@contenthub/types';
 import { DRIVE_PATHS } from '@contenthub/constants';
 
@@ -35,9 +37,10 @@ export class GoogleDriveService {
       this.findOrCreateFolder(DRIVE_PATHS.CONTENT_CALENDAR, this.rootFolderId),
       this.findOrCreateFolder(DRIVE_PATHS.NOTE_IDEAS, this.rootFolderId),
       this.findOrCreateFolder(DRIVE_PATHS.STYLE_LEARNING, this.rootFolderId),
-      this.findOrCreateFolder(DRIVE_PATHS.POST_LEARNING, this.rootFolderId),
       this.findOrCreateFolder(DRIVE_PATHS.SAVED_POSTS, this.rootFolderId),
       this.findOrCreateFolder(DRIVE_PATHS.SETTINGS, this.rootFolderId),
+      this.findOrCreateFolder(DRIVE_PATHS.CONTEXT, this.rootFolderId),
+      this.findOrCreateFolder(DRIVE_PATHS.GOOD_POSTS, this.rootFolderId),
     ]);
   }
 
@@ -191,20 +194,6 @@ export class GoogleDriveService {
     return this.loadJson<StyleLearningData>(DRIVE_PATHS.STYLE_LEARNING, fileName);
   }
 
-  // 投稿フィードバック操作
-  async savePostFeedback(
-    platform: 'x' | 'threads',
-    data: PostFeedback
-  ): Promise<void> {
-    const fileName = `${platform}_feedback.json`;
-    await this.saveJson(DRIVE_PATHS.POST_LEARNING, fileName, data);
-  }
-
-  async loadPostFeedback(platform: 'x' | 'threads'): Promise<PostFeedback | null> {
-    const fileName = `${platform}_feedback.json`;
-    return this.loadJson<PostFeedback>(DRIVE_PATHS.POST_LEARNING, fileName);
-  }
-
   // 保存BOX操作
   async saveSavedPosts(platform: 'x' | 'threads', posts: SavedPost[]): Promise<void> {
     const fileName = `${platform}_saved.json`;
@@ -214,6 +203,35 @@ export class GoogleDriveService {
   async loadSavedPosts(platform: 'x' | 'threads'): Promise<SavedPost[]> {
     const fileName = `${platform}_saved.json`;
     const data = await this.loadJson<SavedPost[]>(DRIVE_PATHS.SAVED_POSTS, fileName);
+    return data || [];
+  }
+
+  // コンテキスト操作
+  async saveContext(data: ContentContext): Promise<void> {
+    const fileName = 'context.json';
+    await this.saveJson(DRIVE_PATHS.CONTEXT, fileName, data);
+  }
+
+  async loadContext(): Promise<ContentContext | null> {
+    const fileName = 'context.json';
+    return this.loadJson<ContentContext>(DRIVE_PATHS.CONTEXT, fileName);
+  }
+
+  // 投稿済み（良い投稿）操作
+  async saveGoodPost(platform: 'x' | 'threads', post: GeneratedPost): Promise<void> {
+    const fileName = `${platform}_good_posts.json`;
+    const existing = await this.loadJson<PostedPost[]>(DRIVE_PATHS.GOOD_POSTS, fileName) || [];
+    const postedPost: PostedPost = {
+      ...post,
+      posted_at: new Date().toISOString(),
+    };
+    existing.push(postedPost);
+    await this.saveJson(DRIVE_PATHS.GOOD_POSTS, fileName, existing);
+  }
+
+  async loadGoodPosts(platform: 'x' | 'threads'): Promise<PostedPost[]> {
+    const fileName = `${platform}_good_posts.json`;
+    const data = await this.loadJson<PostedPost[]>(DRIVE_PATHS.GOOD_POSTS, fileName);
     return data || [];
   }
 }
