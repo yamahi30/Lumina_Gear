@@ -218,9 +218,10 @@ export interface PersonaData {
   updated_at: string;
 }
 
-// 保存されたペルソナ一覧
+// 保存されたペルソナ一覧（統合版）
 export interface PersonaList {
   personas: PersonaData[];
+  activePersonaId?: string;    // 現在選択されているペルソナのID
   updated_at: string;
 }
 

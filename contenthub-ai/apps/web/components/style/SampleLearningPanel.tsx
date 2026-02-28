@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, Sparkles, Loader2, ArrowRight } from 'lucide-react';
+import { Sparkles, Loader2, ArrowRight } from 'lucide-react';
 import type { StyleType, StyleGuideType } from '@contenthub/types';
 import { StyleTypeSelector } from './StyleTypeSelector';
 import { SampleInputList } from './SampleInputList';
@@ -10,8 +10,6 @@ import {
   useStyleLearningData,
   useSaveStyleSamples,
   useLearnStyle,
-  useStyleGuide,
-  useUpdateStyleGuide,
 } from '@/hooks/api/useStyleLearning';
 
 // 学習特性をスタイルガイド用にフォーマット
@@ -75,20 +73,20 @@ const styleTypeToGuideType: Record<StyleType, StyleGuideType> = {
   note_paid: 'note_paid',
 };
 
-export function SampleLearningPanel() {
+interface SampleLearningPanelProps {
+  onApplyToChat: (text: string, targetType?: StyleGuideType) => void;
+}
+
+export function SampleLearningPanel({ onApplyToChat }: SampleLearningPanelProps) {
   const [selectedType, setSelectedType] = useState<StyleType>('x_style');
   const [samples, setSamples] = useState<string[]>(['']);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [isApplying, setIsApplying] = useState(false);
-  const [applySuccess, setApplySuccess] = useState(false);
 
   // データ取得
   const { data: learningData, isLoading: isLoadingData } = useStyleLearningData(selectedType);
 
-  // スタイルガイドを取得（反映のため）
+  // スタイルガイド用の型変換
   const guideType = styleTypeToGuideType[selectedType];
-  const { data: styleGuide } = useStyleGuide(guideType);
-  const updateGuideMutation = useUpdateStyleGuide();
 
   // ミューテーション
   const saveMutation = useSaveStyleSamples();
@@ -115,23 +113,7 @@ export function SampleLearningPanel() {
     setSelectedType(type);
   };
 
-  // 保存
-  const handleSave = async () => {
-    const validSamples = samples.filter((s) => s.trim());
-    if (validSamples.length === 0) return;
-
-    try {
-      await saveMutation.mutateAsync({
-        type: selectedType,
-        samples: validSamples,
-      });
-      setHasUnsavedChanges(false);
-    } catch (error) {
-      console.error('Save failed:', error);
-    }
-  };
-
-  // 分析実行
+  // 分析実行（保存も同時に行う）
   const handleLearn = async () => {
     const validSamples = samples.filter((s) => s.trim());
     if (validSamples.length === 0) return;
@@ -142,63 +124,24 @@ export function SampleLearningPanel() {
         samples: validSamples,
       });
       setHasUnsavedChanges(false);
-      setApplySuccess(false); // 新しい分析後はリセット
     } catch (error) {
       console.error('Learn failed:', error);
     }
   };
 
-  // 分析結果をスタイルガイドに反映
-  const handleApply = async () => {
+  // 分析結果をAIアシスタントの入力欄に反映
+  const handleApply = () => {
     const characteristics = learningData?.learned_characteristics;
     if (!characteristics) return;
 
-    setIsApplying(true);
-    setApplySuccess(false);
-
-    try {
-      // 学習特性をフォーマットしてスタイルガイドに追記
-      const characteristicsText = formatCharacteristicsForGuide(characteristics);
-      const currentContent = styleGuide?.content || '';
-
-      // 既存のコンテンツに学習結果を追記または更新
-      let newContent = currentContent;
-      const marker = '## 学習済み文体特性';
-      const endMarker = '## ---';
-
-      if (currentContent.includes(marker)) {
-        // 既存のセクションを置換
-        const startIdx = currentContent.indexOf(marker);
-        const endIdx = currentContent.indexOf(endMarker, startIdx);
-        if (endIdx > startIdx) {
-          newContent = currentContent.substring(0, startIdx) +
-                       characteristicsText +
-                       currentContent.substring(endIdx + endMarker.length);
-        } else {
-          newContent = currentContent.substring(0, startIdx) + characteristicsText;
-        }
-      } else {
-        // 新規追加
-        newContent = currentContent + '\n\n' + characteristicsText;
-      }
-
-      await updateGuideMutation.mutateAsync({
-        type: guideType,
-        content: newContent.trim(),
-      });
-
-      setApplySuccess(true);
-    } catch (error) {
-      console.error('Apply failed:', error);
-    } finally {
-      setIsApplying(false);
-    }
+    const characteristicsText = formatCharacteristicsForGuide(characteristics);
+    const message = `以下の学習済み文体特性をスタイルガイドに反映してください：\n\n${characteristicsText}`;
+    onApplyToChat(message, guideType);
   };
 
   const validSamplesCount = samples.filter((s) => s.trim()).length;
-  const canSave = validSamplesCount > 0 && !saveMutation.isPending;
   const canLearn = validSamplesCount > 0 && !learnMutation.isPending;
-  const canApply = learningData?.learned_characteristics && !isApplying;
+  const canApply = !!learningData?.learned_characteristics;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -232,27 +175,11 @@ export function SampleLearningPanel() {
               />
 
               {/* アクションボタン */}
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={handleSave}
-                  disabled={!canSave}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5
-                    bg-gray-100 text-gray-700 rounded-xl text-sm font-medium
-                    hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed
-                    transition-colors"
-                >
-                  {saveMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Save className="w-4 h-4" />
-                  )}
-                  保存のみ
-                </button>
-
+              <div className="pt-2">
                 <button
                   onClick={handleLearn}
                   disabled={!canLearn}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5
                     bg-indigo-500 text-white rounded-xl text-sm font-medium
                     hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed
                     transition-colors"
@@ -268,17 +195,11 @@ export function SampleLearningPanel() {
 
               {hasUnsavedChanges && (
                 <p className="text-xs text-amber-600">
-                  未保存の変更があります
+                  変更があります。分析を実行してください
                 </p>
               )}
 
-              {saveMutation.isSuccess && !hasUnsavedChanges && (
-                <p className="text-xs text-green-600">
-                  保存しました
-                </p>
-              )}
-
-              {(saveMutation.isError || learnMutation.isError) && (
+              {learnMutation.isError && (
                 <p className="text-xs text-red-600">
                   エラーが発生しました
                 </p>
@@ -309,31 +230,12 @@ export function SampleLearningPanel() {
                 disabled:opacity-50 disabled:cursor-not-allowed
                 transition-all"
             >
-              {isApplying ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  反映中...
-                </>
-              ) : (
-                <>
-                  <ArrowRight className="w-4 h-4" />
-                  スタイルガイドに反映
-                </>
-              )}
+              <ArrowRight className="w-4 h-4" />
+              AIアシスタントに反映
             </button>
             <p className="text-xs text-gray-500 text-center mt-2">
-              分析結果を文体構造ガイドに追記します
+              分析結果をAIアシスタントの入力欄に貼り付けて、チャットモードに切り替えます
             </p>
-            {applySuccess && (
-              <p className="text-xs text-green-600 text-center mt-2">
-                スタイルガイドに反映しました
-              </p>
-            )}
-            {updateGuideMutation.isError && (
-              <p className="text-xs text-red-600 text-center mt-2">
-                反映に失敗しました
-              </p>
-            )}
           </div>
         )}
 

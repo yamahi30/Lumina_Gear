@@ -32,6 +32,7 @@ export function usePersona() {
 }
 
 // ペルソナ設定を更新（単一）
+// APIが自動的に一覧への追加/更新も行う
 export function useUpdatePersona() {
   const queryClient = useQueryClient();
 
@@ -41,6 +42,8 @@ export function useUpdatePersona() {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['persona'], data);
+      // 一覧も更新される可能性があるので再取得
+      queryClient.invalidateQueries({ queryKey: ['personas'] });
     },
   });
 }
@@ -97,6 +100,34 @@ export function useDeletePersona() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['personas'] });
+    },
+  });
+}
+
+// ========================================
+// ペルソナ例生成（AI）
+// ========================================
+
+export interface PersonaExampleInput {
+  ageRange: string;
+  gender: string;
+  occupation: string;
+  problems: string[];
+  interests: string[];
+}
+
+export interface PersonaExampleOutput {
+  name: string;
+  age: number;
+  job: string;
+  description: string;
+}
+
+// ペルソナ例をAIで生成
+export function useGeneratePersonaExample() {
+  return useMutation({
+    mutationFn: async (input: PersonaExampleInput) => {
+      return apiPost<PersonaExampleOutput>('/api/context/persona/generate-example', input);
     },
   });
 }

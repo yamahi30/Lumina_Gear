@@ -12,13 +12,13 @@ export const myAccountRouter = Router();
 myAccountRouter.use(requireAuth);
 
 // ローカル保存ディレクトリ
-const DATA_DIR = path.resolve(process.cwd(), '../../data/settings');
-const MY_ACCOUNT_FILE = path.join(DATA_DIR, 'my-account.json');
+const CONTEXT_DIR = path.resolve(process.cwd(), '../../data/context');
+const MY_ACCOUNT_FILE = path.join(CONTEXT_DIR, 'my-account.json');
 
 // ディレクトリ確保
-async function ensureDataDir() {
+async function ensureContextDir() {
   try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.mkdir(CONTEXT_DIR, { recursive: true });
   } catch {
     // 既存の場合は無視
   }
@@ -36,7 +36,7 @@ async function loadLocal(): Promise<MyAccountInfo | null> {
 
 // ローカルファイルに保存
 async function saveLocal(data: MyAccountInfo): Promise<void> {
-  await ensureDataDir();
+  await ensureContextDir();
   await fs.writeFile(MY_ACCOUNT_FILE, JSON.stringify(data, null, 2), 'utf-8');
 }
 
@@ -53,7 +53,7 @@ myAccountRouter.get('/', async (req, res) => {
       try {
         const driveService = await getDriveService(req);
         if (driveService) {
-          data = await driveService.loadJson<MyAccountInfo>('Settings', 'my-account.json');
+          data = await driveService.loadJson<MyAccountInfo>('Context', 'my-account.json');
         }
       } catch (driveError) {
         console.error('Failed to load my-account from Drive:', driveError);
@@ -115,7 +115,7 @@ myAccountRouter.put('/', async (req, res) => {
       try {
         const driveService = await getDriveService(req);
         if (driveService) {
-          await driveService.saveJson('Settings', 'my-account.json', data);
+          await driveService.saveJson('Context', 'my-account.json', data);
           console.log('My account saved to Google Drive');
         }
       } catch (driveError) {

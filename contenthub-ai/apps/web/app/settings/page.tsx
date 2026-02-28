@@ -16,6 +16,7 @@ import {
   usePersonaList,
   useAddPersona,
   useDeletePersona,
+  useGeneratePersonaExample,
   type PersonaSettings,
 } from '@/hooks/api/usePersona';
 import {
@@ -408,13 +409,13 @@ function PersonaSettingsPanel() {
   const updateMutation = useUpdatePersona();
   const addMutation = useAddPersona();
   const deleteMutation = useDeletePersona();
+  const generateMutation = useGeneratePersonaExample();
 
   const [persona, setPersona] = useState<PersonaSettings | null>(null);
   const [personaName, setPersonaName] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
   const [newProblem, setNewProblem] = useState('');
   const [newInterest, setNewInterest] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
     if (personaData) {
@@ -465,16 +466,14 @@ function PersonaSettingsPanel() {
     setHasChanges(true);
   };
 
+  // 保存処理（現在の設定を保存 + 一覧にも自動追加/更新）
   const handleSave = async () => {
     if (!persona) return;
-    await updateMutation.mutateAsync({ ...persona, name: personaName });
-    setHasChanges(false);
-  };
 
-  const handleAddToList = async () => {
-    if (!persona || !personaName.trim()) return;
-    await addMutation.mutateAsync({ ...persona, name: personaName.trim() });
-    setPersonaName('');
+    // APIが自動的に一覧への追加/更新も行う
+    await updateMutation.mutateAsync({ ...persona, name: personaName });
+
+    setHasChanges(false);
   };
 
   const handleDeletePersona = async (id: string) => {
@@ -494,43 +493,29 @@ function PersonaSettingsPanel() {
   // AIでペルソナ例を生成
   const handleGeneratePersona = async () => {
     if (!persona) return;
-    setIsGenerating(true);
 
-    // TODO: Claude API連携
-    // 現在はモック実装
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      const result = await generateMutation.mutateAsync({
+        ageRange: persona.ageRange,
+        gender: persona.gender,
+        occupation: persona.occupation,
+        problems: persona.problems,
+        interests: persona.interests,
+      });
 
-    // 入力情報からペルソナ例を生成
-    const names = ['ゆい', 'みさき', 'あやか', 'りな', 'さくら', 'ゆか', 'まい'];
-    const randomName = names[Math.floor(Math.random() * names.length)];
-    const ageMatch = persona.ageRange.match(/(\d+)/);
-    const baseAge = ageMatch ? parseInt(ageMatch[1]) : 25;
-    const randomAge = baseAge + Math.floor(Math.random() * 10);
-
-    const jobs = ['事務職', '営業', '販売スタッフ', 'カスタマーサポート', '経理', '一般事務'];
-    const randomJob = jobs[Math.floor(Math.random() * jobs.length)];
-
-    // 悩みと興味から説明文を生成
-    const problemText = persona.problems.length > 0
-      ? persona.problems.slice(0, 2).join('、')
-      : '日々の生活に少し疲れを感じている';
-    const interestText = persona.interests.length > 0
-      ? persona.interests.join('や')
-      : '新しいスキル';
-
-    const description = `${persona.occupation}として働く${persona.gender}。${problemText}と感じている。SNSで同じような境遇の人の発信を見て共感したり、${interestText}の情報を集めたりしている。もっと自分らしく、無理なく働ける生き方を模索中。`;
-
-    setPersona({
-      ...persona,
-      personaExample: {
-        name: randomName,
-        age: randomAge,
-        job: randomJob,
-        description,
-      },
-    });
-    setHasChanges(true);
-    setIsGenerating(false);
+      setPersona({
+        ...persona,
+        personaExample: {
+          name: result.name,
+          age: result.age,
+          job: result.job,
+          description: result.description,
+        },
+      });
+      setHasChanges(true);
+    } catch (error) {
+      console.error('Failed to generate persona example:', error);
+    }
   };
 
   if (isLoading || !persona) {
@@ -665,7 +650,7 @@ function PersonaSettingsPanel() {
         {/* ペルソナ例を生成ボタン */}
         <button
           onClick={handleGeneratePersona}
-          disabled={isGenerating || persona.problems.length === 0}
+          disabled={generateMutation.isPending || persona.problems.length === 0}
           className="w-full flex items-center justify-center gap-2 px-4 py-3
             bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl
             text-sm font-medium shadow-sm
@@ -673,7 +658,7 @@ function PersonaSettingsPanel() {
             disabled:opacity-50 disabled:cursor-not-allowed
             transition-all"
         >
-          {isGenerating ? (
+          {generateMutation.isPending ? (
             <>
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               生成中...
@@ -768,36 +753,22 @@ function PersonaSettingsPanel() {
             </p>
           )}
 
-          <div className="flex gap-2">
-            <button
-              onClick={handleSave}
-              disabled={!hasChanges || updateMutation.isPending}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white transition-colors text-sm font-medium ${
-                hasChanges
-                  ? 'bg-indigo-500 hover:bg-indigo-600'
-                  : 'bg-gray-300 cursor-not-allowed'
-              }`}
-            >
-              {updateMutation.isPending ? (
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              現在の設定を保存
-            </button>
-            <button
-              onClick={handleAddToList}
-              disabled={!personaName.trim() || addMutation.isPending}
-              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-            >
-              {addMutation.isPending ? (
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Plus className="w-4 h-4" />
-              )}
-              一覧に追加
-            </button>
-          </div>
+          <button
+            onClick={handleSave}
+            disabled={!hasChanges || updateMutation.isPending}
+            className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white transition-colors text-sm font-medium ${
+              hasChanges
+                ? 'bg-indigo-500 hover:bg-indigo-600'
+                : 'bg-gray-300 cursor-not-allowed'
+            }`}
+          >
+            {updateMutation.isPending ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            保存
+          </button>
         </div>
 
         {/* 最終更新日時 */}

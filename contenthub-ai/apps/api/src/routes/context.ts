@@ -1,10 +1,11 @@
-import { Router } from 'express';
+import { Router, Request as ExpressRequest } from 'express';
 import fs from 'fs/promises';
 import path from 'path';
 import type { MarketResearch, CustomInstructions, CompetitorAnalysis, PersonaData, PersonaList, ApiResponse } from '@contenthub/types';
-import { isDriveEnabled } from '../config';
+import { isDriveEnabled, isGeminiEnabled } from '../config';
 import { getDriveService } from '../services/drive-helper';
 import { requireAuth } from './auth';
+import { GeminiService } from '../services/gemini';
 
 export const contextRouter = Router();
 
@@ -300,11 +301,13 @@ contextRouter.put('/competitor-analysis', async (req, res) => {
 });
 
 // ========================================
-// ペルソナ
+// ペルソナ（統合版: personas.json で一元管理）
 // ========================================
 
 // デフォルトのペルソナ
 const DEFAULT_PERSONA: PersonaData = {
+  id: 'default',
+  name: 'デフォルト',
   ageRange: '20〜30代',
   gender: '女性',
   occupation: '会社員・パートなど働く労働世代',
@@ -329,43 +332,92 @@ const DEFAULT_PERSONA: PersonaData = {
   updated_at: new Date().toISOString(),
 };
 
+// ペルソナ一覧を取得するヘルパー関数
+async function loadPersonaList(req: ExpressRequest): Promise<PersonaList> {
+  let data: PersonaList | null = null;
+
+  // Google Driveから読み込み
+  if (isDriveEnabled()) {
+    try {
+      const driveService = await getDriveService(req);
+      if (driveService) {
+        data = await driveService.loadJson<PersonaList>('Context', 'personas.json');
+      }
+    } catch (driveError) {
+      console.error('Failed to load personas from Drive:', driveError);
+    }
+  }
+
+  // フォールバック: ローカルファイル
+  if (!data) {
+    try {
+      const filePath = path.join(CONTEXT_DIR, 'personas.json');
+      const content = await fs.readFile(filePath, 'utf-8');
+      data = JSON.parse(content) as PersonaList;
+    } catch {
+      data = null;
+    }
+  }
+
+  // デフォルト値
+  if (!data) {
+    data = {
+      personas: [DEFAULT_PERSONA],
+      activePersonaId: 'default',
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  return data;
+}
+
+// ペルソナ一覧を保存するヘルパー関数
+async function savePersonaList(req: ExpressRequest, data: PersonaList): Promise<void> {
+  // ローカルに保存
+  await ensureContextDir();
+  const filePath = path.join(CONTEXT_DIR, 'personas.json');
+  await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+
+  // Google Driveに保存
+  if (isDriveEnabled()) {
+    try {
+      const driveService = await getDriveService(req);
+      if (driveService) {
+        await driveService.saveJson('Context', 'personas.json', data);
+        console.log('✅ Personas saved to Google Drive');
+      } else {
+        console.log('⚠️ Drive service not available (no tokens?)');
+      }
+    } catch (driveError) {
+      console.error('Failed to save personas to Drive:', driveError);
+    }
+  } else {
+    console.log('ℹ️ Google Drive disabled, saved locally only');
+  }
+}
+
 /**
- * ペルソナ取得
+ * 現在のアクティブなペルソナ取得
  * GET /api/context/persona
  */
 contextRouter.get('/persona', async (req, res) => {
   try {
-    let data: PersonaData | null = null;
+    const personaList = await loadPersonaList(req);
 
-    // Google Driveから読み込み
-    if (isDriveEnabled()) {
-      try {
-        const driveService = await getDriveService(req);
-        if (driveService) {
-          data = await driveService.loadJson<PersonaData>('Context', 'persona.json');
-        }
-      } catch (driveError) {
-        console.error('Failed to load persona from Drive:', driveError);
-      }
+    // アクティブなペルソナを取得
+    let activePersona = personaList.personas.find(p => p.id === personaList.activePersonaId);
+
+    // アクティブなペルソナが見つからない場合は最初のペルソナを使用
+    if (!activePersona && personaList.personas.length > 0) {
+      activePersona = personaList.personas[0];
     }
 
-    // フォールバック: ローカルファイル
-    if (!data) {
-      try {
-        const filePath = path.join(CONTEXT_DIR, 'persona.json');
-        const content = await fs.readFile(filePath, 'utf-8');
-        data = JSON.parse(content) as PersonaData;
-      } catch {
-        data = null;
-      }
+    // ペルソナが1つもない場合はデフォルトを返す
+    if (!activePersona) {
+      activePersona = DEFAULT_PERSONA;
     }
 
-    // デフォルト値
-    if (!data) {
-      data = DEFAULT_PERSONA;
-    }
-
-    res.json({ status: 'success', data });
+    res.json({ status: 'success', data: activePersona });
   } catch (error) {
     console.error('Get persona error:', error);
     res.status(500).json({ status: 'error', error: 'ペルソナの取得に失敗しました' });
@@ -373,14 +425,25 @@ contextRouter.get('/persona', async (req, res) => {
 });
 
 /**
- * ペルソナ更新
+ * ペルソナ更新（アクティブなペルソナを更新、または新規追加）
  * PUT /api/context/persona
  */
 contextRouter.put('/persona', async (req, res) => {
   try {
-    const personaInput = req.body as Partial<PersonaData>;
+    const personaInput = req.body as Partial<PersonaData> & { name?: string };
+    const personaList = await loadPersonaList(req);
 
-    const data: PersonaData = {
+    // 既存のペルソナを探す（IDまたは名前で）
+    let existingIndex = -1;
+    if (personaInput.id) {
+      existingIndex = personaList.personas.findIndex(p => p.id === personaInput.id);
+    } else if (personaInput.name) {
+      existingIndex = personaList.personas.findIndex(p => p.name === personaInput.name);
+    }
+
+    const updatedPersona: PersonaData = {
+      id: personaInput.id || (existingIndex >= 0 ? personaList.personas[existingIndex].id : `persona-${Date.now()}`),
+      name: personaInput.name || (existingIndex >= 0 ? personaList.personas[existingIndex].name : `ペルソナ ${personaList.personas.length + 1}`),
       ageRange: personaInput.ageRange || DEFAULT_PERSONA.ageRange,
       gender: personaInput.gender || DEFAULT_PERSONA.gender,
       occupation: personaInput.occupation || DEFAULT_PERSONA.occupation,
@@ -390,38 +453,26 @@ contextRouter.put('/persona', async (req, res) => {
       updated_at: new Date().toISOString(),
     };
 
-    // ローカルに保存
-    await ensureContextDir();
-    const filePath = path.join(CONTEXT_DIR, 'persona.json');
-    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
-
-    // Google Driveに保存
-    if (isDriveEnabled()) {
-      try {
-        const driveService = await getDriveService(req);
-        if (driveService) {
-          await driveService.saveJson('Context', 'persona.json', data);
-          console.log('✅ Persona saved to Google Drive');
-        } else {
-          console.log('⚠️ Drive service not available (no tokens?)');
-        }
-      } catch (driveError) {
-        console.error('Failed to save persona to Drive:', driveError);
-      }
+    if (existingIndex >= 0) {
+      // 既存のペルソナを更新
+      personaList.personas[existingIndex] = updatedPersona;
     } else {
-      console.log('ℹ️ Google Drive disabled, saved locally only');
+      // 新規追加
+      personaList.personas.push(updatedPersona);
     }
 
-    res.json({ status: 'success', data });
+    // アクティブなペルソナに設定
+    personaList.activePersonaId = updatedPersona.id;
+    personaList.updated_at = new Date().toISOString();
+
+    await savePersonaList(req, personaList);
+
+    res.json({ status: 'success', data: updatedPersona });
   } catch (error) {
     console.error('Update persona error:', error);
     res.status(500).json({ status: 'error', error: 'ペルソナの更新に失敗しました' });
   }
 });
-
-// ========================================
-// ペルソナ一覧（複数保存）
-// ========================================
 
 /**
  * ペルソナ一覧取得
@@ -429,39 +480,7 @@ contextRouter.put('/persona', async (req, res) => {
  */
 contextRouter.get('/personas', async (req, res) => {
   try {
-    let data: PersonaList | null = null;
-
-    // Google Driveから読み込み
-    if (isDriveEnabled()) {
-      try {
-        const driveService = await getDriveService(req);
-        if (driveService) {
-          data = await driveService.loadJson<PersonaList>('Context', 'personas.json');
-        }
-      } catch (driveError) {
-        console.error('Failed to load personas from Drive:', driveError);
-      }
-    }
-
-    // フォールバック: ローカルファイル
-    if (!data) {
-      try {
-        const filePath = path.join(CONTEXT_DIR, 'personas.json');
-        const content = await fs.readFile(filePath, 'utf-8');
-        data = JSON.parse(content) as PersonaList;
-      } catch {
-        data = null;
-      }
-    }
-
-    // デフォルト値（空の一覧）
-    if (!data) {
-      data = {
-        personas: [],
-        updated_at: new Date().toISOString(),
-      };
-    }
-
+    const data = await loadPersonaList(req);
     res.json({ status: 'success', data });
   } catch (error) {
     console.error('Get personas error:', error);
@@ -476,38 +495,12 @@ contextRouter.get('/personas', async (req, res) => {
 contextRouter.post('/personas', async (req, res) => {
   try {
     const personaInput = req.body as Partial<PersonaData> & { name?: string };
-
-    // 既存のペルソナ一覧を取得
-    let existingList: PersonaList = { personas: [], updated_at: '' };
-
-    // Google Driveから読み込み
-    if (isDriveEnabled()) {
-      try {
-        const driveService = await getDriveService(req);
-        if (driveService) {
-          const loaded = await driveService.loadJson<PersonaList>('Context', 'personas.json');
-          if (loaded) existingList = loaded;
-        }
-      } catch {
-        // 無視
-      }
-    }
-
-    // ローカルファイルから読み込み
-    if (existingList.personas.length === 0) {
-      try {
-        const filePath = path.join(CONTEXT_DIR, 'personas.json');
-        const content = await fs.readFile(filePath, 'utf-8');
-        existingList = JSON.parse(content) as PersonaList;
-      } catch {
-        // 無視
-      }
-    }
+    const personaList = await loadPersonaList(req);
 
     // 新しいペルソナを作成
     const newPersona: PersonaData = {
       id: `persona-${Date.now()}`,
-      name: personaInput.name || `ペルソナ ${existingList.personas.length + 1}`,
+      name: personaInput.name || `ペルソナ ${personaList.personas.length + 1}`,
       ageRange: personaInput.ageRange || DEFAULT_PERSONA.ageRange,
       gender: personaInput.gender || DEFAULT_PERSONA.gender,
       occupation: personaInput.occupation || DEFAULT_PERSONA.occupation,
@@ -518,30 +511,11 @@ contextRouter.post('/personas', async (req, res) => {
     };
 
     // 一覧に追加
-    existingList.personas.push(newPersona);
-    existingList.updated_at = new Date().toISOString();
+    personaList.personas.push(newPersona);
+    personaList.activePersonaId = newPersona.id;  // 新規追加したものをアクティブに
+    personaList.updated_at = new Date().toISOString();
 
-    // ローカルに保存
-    await ensureContextDir();
-    const filePath = path.join(CONTEXT_DIR, 'personas.json');
-    await fs.writeFile(filePath, JSON.stringify(existingList, null, 2), 'utf-8');
-
-    // Google Driveに保存
-    if (isDriveEnabled()) {
-      try {
-        const driveService = await getDriveService(req);
-        if (driveService) {
-          await driveService.saveJson('Context', 'personas.json', existingList);
-          console.log('✅ Personas saved to Google Drive');
-        } else {
-          console.log('⚠️ Drive service not available (no tokens?)');
-        }
-      } catch (driveError) {
-        console.error('Failed to save personas to Drive:', driveError);
-      }
-    } else {
-      console.log('ℹ️ Google Drive disabled, saved locally only');
-    }
+    await savePersonaList(req, personaList);
 
     res.json({ status: 'success', data: newPersona });
   } catch (error) {
@@ -557,63 +531,129 @@ contextRouter.post('/personas', async (req, res) => {
 contextRouter.delete('/personas/:id', async (req, res) => {
   try {
     const { id } = req.params;
-
-    // 既存のペルソナ一覧を取得
-    let existingList: PersonaList = { personas: [], updated_at: '' };
-
-    // Google Driveから読み込み
-    if (isDriveEnabled()) {
-      try {
-        const driveService = await getDriveService(req);
-        if (driveService) {
-          const loaded = await driveService.loadJson<PersonaList>('Context', 'personas.json');
-          if (loaded) existingList = loaded;
-        }
-      } catch {
-        // 無視
-      }
-    }
-
-    // ローカルファイルから読み込み
-    if (existingList.personas.length === 0) {
-      try {
-        const filePath = path.join(CONTEXT_DIR, 'personas.json');
-        const content = await fs.readFile(filePath, 'utf-8');
-        existingList = JSON.parse(content) as PersonaList;
-      } catch {
-        // 無視
-      }
-    }
+    const personaList = await loadPersonaList(req);
 
     // ペルソナを削除
-    existingList.personas = existingList.personas.filter(p => p.id !== id);
-    existingList.updated_at = new Date().toISOString();
+    personaList.personas = personaList.personas.filter(p => p.id !== id);
 
-    // ローカルに保存
-    await ensureContextDir();
-    const filePath = path.join(CONTEXT_DIR, 'personas.json');
-    await fs.writeFile(filePath, JSON.stringify(existingList, null, 2), 'utf-8');
-
-    // Google Driveに保存
-    if (isDriveEnabled()) {
-      try {
-        const driveService = await getDriveService(req);
-        if (driveService) {
-          await driveService.saveJson('Context', 'personas.json', existingList);
-          console.log('✅ Personas saved to Google Drive (after delete)');
-        } else {
-          console.log('⚠️ Drive service not available (no tokens?)');
-        }
-      } catch (driveError) {
-        console.error('Failed to save personas to Drive:', driveError);
-      }
-    } else {
-      console.log('ℹ️ Google Drive disabled, saved locally only');
+    // 削除したのがアクティブなペルソナだった場合、最初のペルソナをアクティブにする
+    if (personaList.activePersonaId === id) {
+      personaList.activePersonaId = personaList.personas.length > 0 ? personaList.personas[0].id : undefined;
     }
+
+    personaList.updated_at = new Date().toISOString();
+
+    await savePersonaList(req, personaList);
 
     res.json({ status: 'success', data: { message: 'ペルソナを削除しました' } });
   } catch (error) {
     console.error('Delete persona error:', error);
     res.status(500).json({ status: 'error', error: 'ペルソナの削除に失敗しました' });
+  }
+});
+
+// ========================================
+// ペルソナ例生成（AI）
+// ========================================
+
+interface PersonaExampleInput {
+  ageRange: string;
+  gender: string;
+  occupation: string;
+  problems: string[];
+  interests: string[];
+}
+
+interface PersonaExampleOutput {
+  name: string;
+  age: number;
+  job: string;
+  description: string;
+}
+
+/**
+ * ペルソナ例をAIで生成
+ * POST /api/context/persona/generate-example
+ */
+contextRouter.post('/persona/generate-example', async (req, res) => {
+  try {
+    const input = req.body as PersonaExampleInput;
+
+    // Gemini APIが有効かチェック
+    if (!isGeminiEnabled()) {
+      // モックデータを返す
+      const names = ['ゆい', 'みさき', 'あやか', 'りな', 'さくら', 'ゆか', 'まい'];
+      const randomName = names[Math.floor(Math.random() * names.length)];
+      const ageMatch = input.ageRange.match(/(\d+)/);
+      const baseAge = ageMatch ? parseInt(ageMatch[1]) : 25;
+      const randomAge = baseAge + Math.floor(Math.random() * 10);
+
+      const jobs = ['事務職', '営業', '販売スタッフ', 'カスタマーサポート', '経理', '一般事務'];
+      const randomJob = jobs[Math.floor(Math.random() * jobs.length)];
+
+      const problemText = input.problems.length > 0
+        ? input.problems.slice(0, 2).join('、')
+        : '日々の生活に少し疲れを感じている';
+      const interestText = input.interests.length > 0
+        ? input.interests.join('や')
+        : '新しいスキル';
+
+      const description = `${input.occupation}として働く${input.gender}。${problemText}と感じている。SNSで同じような境遇の人の発信を見て共感したり、${interestText}の情報を集めたりしている。もっと自分らしく、無理なく働ける生き方を模索中。`;
+
+      const response: ApiResponse<PersonaExampleOutput> = {
+        status: 'success',
+        data: {
+          name: randomName,
+          age: randomAge,
+          job: randomJob,
+          description,
+        },
+      };
+      return res.json(response);
+    }
+
+    // Gemini APIで生成
+    const gemini = new GeminiService();
+
+    // JSON出力用のモデルを使用
+    const prompt = `以下の属性に基づいて、具体的なペルソナ例を1人生成してください。
+
+## 属性
+- 年代: ${input.ageRange}
+- 性別: ${input.gender}
+- 職業・立場: ${input.occupation}
+- 悩み・課題: ${input.problems.join('、') || '特になし'}
+- 興味・関心: ${input.interests.join('、') || '特になし'}
+
+## 出力形式
+以下のJSONのみを出力してください（説明文は不要）:
+{
+  "name": "ひらがなの名前（例: あやか、みさき）",
+  "age": 数値のみ（例: 28）,
+  "job": "具体的な職種（例: IT企業の事務職）",
+  "description": "100〜150文字程度で、この人の日常・悩み・SNSとの関わり方を具体的に描写"
+}`;
+
+    const result = await gemini['model'].generateContent(prompt);
+    await gemini['trackUsage']('generatePersonaExample', result);
+    const text = result.response.text();
+
+    // JSONをパース
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Failed to parse persona example JSON');
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]) as PersonaExampleOutput;
+
+    const response: ApiResponse<PersonaExampleOutput> = {
+      status: 'success',
+      data: parsed,
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Generate persona example error:', error);
+    res.status(500).json({ status: 'error', error: 'ペルソナ例の生成に失敗しました' });
   }
 });

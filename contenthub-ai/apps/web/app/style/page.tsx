@@ -50,6 +50,19 @@ export default function StylePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState('');
 
+  // 反映機能: AIアシスタントの入力欄に貼り付けてchatモードに切り替え
+  const handleApplyToChat = (text: string, targetType?: StyleGuideType) => {
+    if (targetType) {
+      setSelectedType(targetType);
+    }
+    setInputMessage(text);
+    setMode('chat');
+    // テキストエリアにフォーカス
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 100);
+  };
+
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -224,6 +237,23 @@ export default function StylePage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {!isEditing && styleGuide?.content && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSaveEdit();
+                          }}
+                          disabled={updateGuideMutation.isPending}
+                          className="p-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
+                          title="保存"
+                        >
+                          {updateGuideMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
+                          ) : (
+                            <Save className="w-4 h-4 text-indigo-500" />
+                          )}
+                        </button>
+                      )}
                       {!isEditing && (
                         <button
                           onClick={(e) => {
@@ -420,9 +450,9 @@ export default function StylePage() {
             </>
           ) : (
             <>
-              <SampleLearningPanel />
+              <SampleLearningPanel onApplyToChat={handleApplyToChat} />
               <div className="mt-8">
-                <NgExpressionsPanel />
+                <NgExpressionsPanel onApplyToChat={handleApplyToChat} />
               </div>
             </>
           )}
@@ -483,23 +513,21 @@ function formatNgExpressionsForGuide(expressions: NgExpression[]): string {
 // 全スタイルガイドタイプ
 const ALL_STYLE_GUIDE_TYPES: StyleGuideType[] = ['x', 'threads', 'note_free', 'note_affiliate', 'note_membership', 'note_paid'];
 
-function NgExpressionsPanel() {
+interface NgExpressionsPanelProps {
+  onApplyToChat: (text: string, targetType?: StyleGuideType) => void;
+}
+
+function NgExpressionsPanel({ onApplyToChat }: NgExpressionsPanelProps) {
   const { data: ngData, isLoading } = useNgExpressions();
   const addMutation = useAddNgExpression();
   const deleteMutation = useDeleteNgExpression();
-  const updateGuideMutation = useUpdateStyleGuide();
 
   const [newExpression, setNewExpression] = useState<Omit<NgExpression, 'id'>>({
     type: 'word',
     content: '',
     reason: '',
   });
-  const [isApplying, setIsApplying] = useState(false);
-  const [applySuccess, setApplySuccess] = useState(false);
   const [selectedGuideType, setSelectedGuideType] = useState<StyleGuideType>('x');
-
-  // 選択中のスタイルガイドを取得
-  const { data: styleGuide } = useStyleGuide(selectedGuideType);
 
   const expressions = ngData?.expressions || [];
 
@@ -507,55 +535,19 @@ function NgExpressionsPanel() {
     if (!newExpression.content.trim()) return;
     await addMutation.mutateAsync(newExpression);
     setNewExpression({ type: 'word', content: '', reason: '' });
-    setApplySuccess(false);
   };
 
   const handleDelete = async (id: string) => {
     await deleteMutation.mutateAsync(id);
-    setApplySuccess(false);
   };
 
-  // NG表現をスタイルガイドに反映
-  const handleApply = async () => {
+  // NG表現をAIアシスタントの入力欄に反映
+  const handleApply = () => {
     if (expressions.length === 0) return;
 
-    setIsApplying(true);
-    setApplySuccess(false);
-
-    try {
-      const ngText = formatNgExpressionsForGuide(expressions);
-      const currentContent = styleGuide?.content || '';
-
-      // 既存のNG表現セクションを置換または追加
-      let newContent = currentContent;
-      const marker = '## NG表現・避けたい話題';
-      const endMarker = '## ---NG---';
-
-      if (currentContent.includes(marker)) {
-        const startIdx = currentContent.indexOf(marker);
-        const endIdx = currentContent.indexOf(endMarker, startIdx);
-        if (endIdx > startIdx) {
-          newContent = currentContent.substring(0, startIdx) +
-                       ngText +
-                       currentContent.substring(endIdx + endMarker.length);
-        } else {
-          newContent = currentContent.substring(0, startIdx) + ngText;
-        }
-      } else {
-        newContent = currentContent + '\n\n' + ngText;
-      }
-
-      await updateGuideMutation.mutateAsync({
-        type: selectedGuideType,
-        content: newContent.trim(),
-      });
-
-      setApplySuccess(true);
-    } catch (error) {
-      console.error('Apply NG expressions failed:', error);
-    } finally {
-      setIsApplying(false);
-    }
+    const ngText = formatNgExpressionsForGuide(expressions);
+    const message = `以下のNG表現・避けたい話題をスタイルガイドに反映してください：\n\n${ngText}`;
+    onApplyToChat(message, selectedGuideType);
   };
 
   // タイプごとにグループ化
@@ -698,10 +690,10 @@ function NgExpressionsPanel() {
           </div>
         </div>
 
-        {/* スタイルガイドに反映 */}
+        {/* AIアシスタントに反映 */}
         {expressions.length > 0 && (
           <div className="mt-4 pt-4 border-t border-gray-100">
-            <h3 className="text-sm font-medium text-gray-700 mb-3">スタイルガイドに反映</h3>
+            <h3 className="text-sm font-medium text-gray-700 mb-3">AIアシスタントに反映</h3>
             <div className="flex gap-3">
               <select
                 value={selectedGuideType}
@@ -717,7 +709,7 @@ function NgExpressionsPanel() {
               </select>
               <button
                 onClick={handleApply}
-                disabled={isApplying || expressions.length === 0}
+                disabled={expressions.length === 0}
                 className="flex items-center justify-center gap-2 px-4 py-2
                   bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl
                   text-sm font-medium
@@ -725,24 +717,13 @@ function NgExpressionsPanel() {
                   disabled:opacity-50 disabled:cursor-not-allowed
                   transition-all"
               >
-                {isApplying ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <ArrowRight className="w-4 h-4" />
-                )}
+                <ArrowRight className="w-4 h-4" />
                 反映
               </button>
             </div>
-            {applySuccess && (
-              <p className="text-xs text-green-600 mt-2">
-                スタイルガイドに反映しました
-              </p>
-            )}
-            {updateGuideMutation.isError && (
-              <p className="text-xs text-red-600 mt-2">
-                反映に失敗しました
-              </p>
-            )}
+            <p className="text-xs text-gray-500 mt-2">
+              AIアシスタントの入力欄に貼り付けて、チャットモードに切り替えます
+            </p>
           </div>
         )}
       </div>

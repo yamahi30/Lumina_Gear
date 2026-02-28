@@ -1,0 +1,47 @@
+{
+  "categories": [
+    {
+      "id": "hsp",
+      "name": "HSP×AI仕組み化",
+      "description": "HSP関連",
+      "percentage": 17,
+      "color": "#8B5CF6"
+    },
+    {
+      "id": "home-dx",
+      "name": "家庭DX",
+      "description": "家庭のデジタル化・効率化",
+      "percentage": 17,
+      "color": "#10B981"
+    },
+    {
+      "id": "it-ai",
+      "name": "IT・AIキャリア",
+      "description": "IT・AI関連の学習・情報",
+      "percentage": 17,
+      "color": "#3B82F6"
+    },
+    {
+      "id": "mindset",
+      "name": "マインド体験談",
+      "description": "マインドセット・考え方",
+      "percentage": 17,
+      "color": "#F59E0B"
+    },
+    {
+      "id": "note-link",
+      "name": "NOTE誘導",
+      "description": "NOTE記事への誘導",
+      "percentage": 16,
+      "color": "#EC4899"
+    },
+    {
+      "id": "side-income",
+      "name": "副収入",
+      "description": "副業・収入関連",
+      "percentage": 16,
+      "color": "#F97316"
+    }
+  ],
+  "updated_at": "2026-02-27T15:43:10.988Z"
+}

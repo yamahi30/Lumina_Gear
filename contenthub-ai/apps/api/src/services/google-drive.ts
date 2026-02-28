@@ -38,7 +38,6 @@ export class GoogleDriveService {
       this.findOrCreateFolder(DRIVE_PATHS.NOTE_IDEAS, this.rootFolderId),
       this.findOrCreateFolder(DRIVE_PATHS.STYLE_LEARNING, this.rootFolderId),
       this.findOrCreateFolder(DRIVE_PATHS.SAVED_POSTS, this.rootFolderId),
-      this.findOrCreateFolder(DRIVE_PATHS.SETTINGS, this.rootFolderId),
       this.findOrCreateFolder(DRIVE_PATHS.CONTEXT, this.rootFolderId),
       this.findOrCreateFolder(DRIVE_PATHS.GOOD_POSTS, this.rootFolderId),
     ]);

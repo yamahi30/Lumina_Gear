@@ -129,8 +129,7 @@ export const DRIVE_PATHS = {
   NOTE_IDEAS: 'NoteIdeas',
   STYLE_LEARNING: 'StyleLearning',
   SAVED_POSTS: 'SavedPosts',
-  SETTINGS: 'Settings',
-  CONTEXT: 'Context',         // コンテキスト管理
+  CONTEXT: 'Context',         // コンテキスト管理（設定データもここに統合）
   GOOD_POSTS: 'GoodPosts',    // 投稿済み（良い投稿）
 };
 

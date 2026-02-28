@@ -12,12 +12,12 @@ export const categoriesRouter = Router();
 categoriesRouter.use(requireAuth);
 
 // ローカル保存ディレクトリ
-const SETTINGS_DIR = path.resolve(process.cwd(), '../../data/settings');
+const CONTEXT_DIR = path.resolve(process.cwd(), '../../data/context');
 
 // ディレクトリ確保
-async function ensureSettingsDir() {
+async function ensureContextDir() {
   try {
-    await fs.mkdir(SETTINGS_DIR, { recursive: true });
+    await fs.mkdir(CONTEXT_DIR, { recursive: true });
   } catch {
     // 既存の場合は無視
   }
@@ -48,7 +48,7 @@ categoriesRouter.get('/', async (req, res) => {
       try {
         const driveService = await getDriveService(req);
         if (driveService) {
-          data = await driveService.loadJson<CategorySettings>('Settings', 'categories.json');
+          data = await driveService.loadJson<CategorySettings>('Context', 'categories.json');
         }
       } catch (driveError) {
         console.error('Failed to load categories from Drive:', driveError);
@@ -58,7 +58,7 @@ categoriesRouter.get('/', async (req, res) => {
     // フォールバック: ローカルファイル
     if (!data) {
       try {
-        const filePath = path.join(SETTINGS_DIR, 'categories.json');
+        const filePath = path.join(CONTEXT_DIR, 'categories.json');
         const content = await fs.readFile(filePath, 'utf-8');
         data = JSON.parse(content) as CategorySettings;
       } catch {
@@ -103,8 +103,8 @@ categoriesRouter.put('/', async (req, res) => {
     };
 
     // ローカルに保存
-    await ensureSettingsDir();
-    const filePath = path.join(SETTINGS_DIR, 'categories.json');
+    await ensureContextDir();
+    const filePath = path.join(CONTEXT_DIR, 'categories.json');
     await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
 
     // Google Driveに保存
@@ -112,7 +112,7 @@ categoriesRouter.put('/', async (req, res) => {
       try {
         const driveService = await getDriveService(req);
         if (driveService) {
-          await driveService.saveJson('Settings', 'categories.json', data);
+          await driveService.saveJson('Context', 'categories.json', data);
           console.log('✅ Categories saved to Google Drive');
         } else {
           console.log('⚠️ Drive service not available (no tokens?)');
@@ -151,8 +151,8 @@ categoriesRouter.post('/reset', async (req, res) => {
     };
 
     // ローカルに保存
-    await ensureSettingsDir();
-    const filePath = path.join(SETTINGS_DIR, 'categories.json');
+    await ensureContextDir();
+    const filePath = path.join(CONTEXT_DIR, 'categories.json');
     await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
 
     // Google Driveに保存
@@ -160,7 +160,7 @@ categoriesRouter.post('/reset', async (req, res) => {
       try {
         const driveService = await getDriveService(req);
         if (driveService) {
-          await driveService.saveJson('Settings', 'categories.json', data);
+          await driveService.saveJson('Context', 'categories.json', data);
           console.log('Categories reset and saved to Google Drive');
         }
       } catch (driveError) {
