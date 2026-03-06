@@ -40,3 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 data/.google-tokens.json
+
+# Google APIのトークンファイル
+.google-tokens.json
+**/ .google-tokens.json
+data/
