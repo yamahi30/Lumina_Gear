@@ -82,6 +82,16 @@ export class GeminiService {
 
     const parts: string[] = [];
 
+    // 投稿ジャンル（カテゴリ配分）
+    if (context.categories && context.categories.length > 0) {
+      const categoryText = context.categories
+        .filter(c => c.percentage > 0)
+        .sort((a, b) => b.percentage - a.percentage)
+        .map(c => `- ${c.name}: ${c.percentage}%${c.description ? `（${c.description}）` : ''}`)
+        .join('\n');
+      parts.push(`【投稿ジャンル配分】\n${categoryText}`);
+    }
+
     // ペルソナ情報
     if (context.persona) {
       const p = context.persona;
@@ -96,11 +106,34 @@ export class GeminiService {
       parts.push(`【ターゲットペルソナ】\n${personaText}`);
     }
 
-    if (context.market_research?.trim()) {
-      parts.push(`【市場調査・トレンド】\n${context.market_research}`);
+    // 調査ノート（記録があるもののみ）
+    if (context.research_notes && context.research_notes.length > 0) {
+      const notesWithContent = context.research_notes.filter(n => n.content && n.content.trim());
+      if (notesWithContent.length > 0) {
+        const notesText = notesWithContent
+          .map(n => `■ ${n.name}\n${n.content}`)
+          .join('\n\n');
+        parts.push(`【調査ノート】\n${notesText}`);
+      }
     }
+
+    // カスタム指示
     if (context.custom_instructions?.trim()) {
       parts.push(`【カスタム指示】\n${context.custom_instructions}`);
+    }
+
+    // マイアカウント情報
+    if (context.my_account) {
+      const ma = context.my_account;
+      const accountText = [
+        ma.account_policy?.trim() ? `- アカウント方針: ${ma.account_policy}` : '',
+        ma.content_pillars?.trim() ? `- 発信の軸: ${ma.content_pillars}` : '',
+        ma.operation_rules?.trim() ? `- 運用ルール: ${ma.operation_rules}` : '',
+        ma.brand_voice?.trim() ? `- ブランドボイス: ${ma.brand_voice}` : '',
+      ].filter(Boolean).join('\n');
+      if (accountText) {
+        parts.push(`【マイアカウント】\n${accountText}`);
+      }
     }
 
     if (parts.length === 0) return '';

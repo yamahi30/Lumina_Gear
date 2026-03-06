@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { CalendarData, CalendarPost, ApiResponse, ContentContext, MarketResearch, CustomInstructions, CalendarPlatformType, CompetitorAnalysis, PersonaData } from '@contenthub/types';
+import type { CalendarData, CalendarPost, ApiResponse, ContentContext, CustomInstructions, CalendarPlatformType, PersonaData, CategorySettings, MyAccountInfo, ResearchNotes } from '@contenthub/types';
 import { formatDate, formatMonth, getDayOfWeek, getDaysInMonth } from '@contenthub/utils';
 import { GeminiService } from '../services/gemini';
 import { isGeminiEnabled, isDriveEnabled } from '../config';
@@ -26,39 +26,53 @@ function isDailyPlatform(platform: CalendarPlatformType): boolean {
   return platform === 'x' || platform === 'threads';
 }
 
-// コンテキストを読み込むヘルパー関数（市場調査、競合分析、カスタム指示、ペルソナを統合）
+// コンテキストを読み込むヘルパー関数（投稿ジャンル、ペルソナ、調査ノート、カスタム指示、マイアカウントを統合）
 async function loadContext(req: import('express').Request): Promise<ContentContext | null> {
-  let marketResearch = '';
-  let customInstructions = '';
+  let categories: CategorySettings['categories'] | undefined;
   let persona: PersonaData | undefined;
+  let researchNotes: ResearchNotes['items'] | undefined;
+  let customInstructions = '';
+  let myAccount: MyAccountInfo | undefined;
 
   // Google Driveから読み込み
   if (isDriveEnabled()) {
     try {
       const driveService = await getDriveService(req);
       if (driveService) {
-        const mrData = await driveService.loadJson<MarketResearch>('Context', 'market-research.json');
-        if (mrData?.content) {
-          marketResearch = mrData.content;
+        // 投稿ジャンル
+        const catData = await driveService.loadJson<CategorySettings>('Context', 'categories.json');
+        if (catData?.categories) {
+          categories = catData.categories;
         }
-        const caData = await driveService.loadJson<CompetitorAnalysis>('Context', 'competitor-analysis.json');
-        if (caData?.content) {
-          marketResearch += '\n\n【競合分析】\n' + caData.content;
-        }
-        const ciData = await driveService.loadJson<CustomInstructions>('Context', 'custom-instructions.json');
-        if (ciData?.content) {
-          customInstructions = ciData.content;
-        }
+        // ペルソナ
         const personaData = await driveService.loadJson<PersonaData>('Context', 'persona.json');
         if (personaData) {
           persona = personaData;
         }
-        if (marketResearch || customInstructions || persona) {
+        // 調査ノート
+        const rnData = await driveService.loadJson<ResearchNotes>('Context', 'research-notes.json');
+        if (rnData?.items) {
+          researchNotes = rnData.items;
+        }
+        // カスタム指示
+        const ciData = await driveService.loadJson<CustomInstructions>('Context', 'custom-instructions.json');
+        if (ciData?.content) {
+          customInstructions = ciData.content;
+        }
+        // マイアカウント
+        const maData = await driveService.loadJson<MyAccountInfo>('Context', 'my-account.json');
+        if (maData) {
+          myAccount = maData;
+        }
+
+        if (categories || persona || researchNotes || customInstructions || myAccount) {
           console.log('Context loaded from Google Drive');
           return {
-            market_research: marketResearch,
-            custom_instructions: customInstructions,
+            categories,
             persona,
+            research_notes: researchNotes,
+            custom_instructions: customInstructions,
+            my_account: myAccount,
             updated_at: new Date().toISOString(),
           };
         }
@@ -69,26 +83,36 @@ async function loadContext(req: import('express').Request): Promise<ContentConte
   }
 
   // フォールバック: ローカルファイル
+  // 投稿ジャンル
   try {
-    const mrPath = path.join(CONTEXT_DIR, 'market-research.json');
-    const mrContent = await fs.readFile(mrPath, 'utf-8');
-    const mrData = JSON.parse(mrContent) as MarketResearch;
-    marketResearch = mrData.content || '';
+    const catPath = path.join(CONTEXT_DIR, 'categories.json');
+    const catContent = await fs.readFile(catPath, 'utf-8');
+    const catData = JSON.parse(catContent) as CategorySettings;
+    categories = catData.categories;
   } catch {
     // ファイルが存在しない場合は無視
   }
 
+  // ペルソナ
   try {
-    const caPath = path.join(CONTEXT_DIR, 'competitor-analysis.json');
-    const caContent = await fs.readFile(caPath, 'utf-8');
-    const caData = JSON.parse(caContent) as CompetitorAnalysis;
-    if (caData.content) {
-      marketResearch += '\n\n【競合分析】\n' + caData.content;
-    }
+    const personaPath = path.join(CONTEXT_DIR, 'persona.json');
+    const personaContent = await fs.readFile(personaPath, 'utf-8');
+    persona = JSON.parse(personaContent) as PersonaData;
   } catch {
     // ファイルが存在しない場合は無視
   }
 
+  // 調査ノート
+  try {
+    const rnPath = path.join(CONTEXT_DIR, 'research-notes.json');
+    const rnContent = await fs.readFile(rnPath, 'utf-8');
+    const rnData = JSON.parse(rnContent) as ResearchNotes;
+    researchNotes = rnData.items;
+  } catch {
+    // ファイルが存在しない場合は無視
+  }
+
+  // カスタム指示
   try {
     const ciPath = path.join(CONTEXT_DIR, 'custom-instructions.json');
     const ciContent = await fs.readFile(ciPath, 'utf-8');
@@ -98,20 +122,23 @@ async function loadContext(req: import('express').Request): Promise<ContentConte
     // ファイルが存在しない場合は無視
   }
 
+  // マイアカウント
   try {
-    const personaPath = path.join(CONTEXT_DIR, 'persona.json');
-    const personaContent = await fs.readFile(personaPath, 'utf-8');
-    persona = JSON.parse(personaContent) as PersonaData;
+    const maPath = path.join(CONTEXT_DIR, 'my-account.json');
+    const maContent = await fs.readFile(maPath, 'utf-8');
+    myAccount = JSON.parse(maContent) as MyAccountInfo;
   } catch {
     // ファイルが存在しない場合は無視
   }
 
-  if (marketResearch || customInstructions || persona) {
+  if (categories || persona || researchNotes || customInstructions || myAccount) {
     console.log('Context loaded from local files');
     return {
-      market_research: marketResearch,
-      custom_instructions: customInstructions,
+      categories,
       persona,
+      research_notes: researchNotes,
+      custom_instructions: customInstructions,
+      my_account: myAccount,
       updated_at: new Date().toISOString(),
     };
   }

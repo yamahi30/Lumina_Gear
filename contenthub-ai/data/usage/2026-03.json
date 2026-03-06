@@ -1,0 +1,74 @@
+{
+  "month": "2026-03",
+  "total_calls": 3,
+  "total_input_tokens": 788,
+  "total_output_tokens": 348,
+  "total_tokens": 1136,
+  "estimated_cost_usd": 0.0001635,
+  "estimated_cost_jpy": 0.024524999999999998,
+  "by_provider": {
+    "gemini": {
+      "calls": 3,
+      "input_tokens": 788,
+      "output_tokens": 348,
+      "total_tokens": 1136,
+      "cost_usd": 0.0001635,
+      "cost_jpy": 0.024524999999999998
+    },
+    "claude": {
+      "calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "cost_usd": 0,
+      "cost_jpy": 0
+    },
+    "openai": {
+      "calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "cost_usd": 0,
+      "cost_jpy": 0
+    }
+  },
+  "by_function": {
+    "generatePersonaExample": {
+      "calls": 3,
+      "tokens": 1136,
+      "cost_usd": 0.0001635
+    }
+  },
+  "records": [
+    {
+      "timestamp": "2026-03-06T14:29:48.905Z",
+      "provider": "gemini",
+      "function_name": "generatePersonaExample",
+      "model": "gemini-2.0-flash",
+      "input_tokens": 284,
+      "output_tokens": 112,
+      "total_tokens": 396,
+      "estimated_cost_usd": 0.00005489999999999999
+    },
+    {
+      "timestamp": "2026-03-06T14:30:32.707Z",
+      "provider": "gemini",
+      "function_name": "generatePersonaExample",
+      "model": "gemini-2.0-flash",
+      "input_tokens": 271,
+      "output_tokens": 108,
+      "total_tokens": 379,
+      "estimated_cost_usd": 0.000052724999999999994
+    },
+    {
+      "timestamp": "2026-03-06T14:43:03.312Z",
+      "provider": "gemini",
+      "function_name": "generatePersonaExample",
+      "model": "gemini-2.0-flash",
+      "input_tokens": 233,
+      "output_tokens": 128,
+      "total_tokens": 361,
+      "estimated_cost_usd": 0.000055874999999999996
+    }
+  ]
+}

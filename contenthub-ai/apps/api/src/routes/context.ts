@@ -1,7 +1,7 @@
 import { Router, Request as ExpressRequest } from 'express';
 import fs from 'fs/promises';
 import path from 'path';
-import type { MarketResearch, CustomInstructions, CompetitorAnalysis, PersonaData, PersonaList, ApiResponse } from '@contenthub/types';
+import type { MarketResearch, CustomInstructions, CompetitorAnalysis, PersonaData, PersonaList, ApiResponse, ResearchNotes, ResearchItem, ResearchItemId } from '@contenthub/types';
 import { isDriveEnabled, isGeminiEnabled } from '../config';
 import { getDriveService } from '../services/drive-helper';
 import { requireAuth } from './auth';
@@ -655,5 +655,196 @@ contextRouter.post('/persona/generate-example', async (req, res) => {
   } catch (error) {
     console.error('Generate persona example error:', error);
     res.status(500).json({ status: 'error', error: 'ペルソナ例の生成に失敗しました' });
+  }
+});
+
+// ========================================
+// 調査ノート（13項目）
+// ========================================
+
+// デフォルトの調査項目
+const DEFAULT_RESEARCH_ITEMS: ResearchItem[] = [
+  { id: 'hsp_trends', name: 'HSP女性のリアルな悩みトレンド', category: 'HSP×AI仕組み化術 / マインド×体験談', content: '', updated_at: new Date().toISOString() },
+  { id: 'competitor_analysis', name: '競合アカウントの投稿パターン分析', category: '全柱共通', content: '', updated_at: new Date().toISOString() },
+  { id: 'ai_news', name: 'AI最新情報（大衆が興味を持ちそうなもの）', category: 'HSP×AI仕組み化術', content: '', updated_at: new Date().toISOString() },
+  { id: 'home_dx', name: '家庭DX・スマート家電・時短ライフハック情報', category: '女性の家庭DX実践術', content: '', updated_at: new Date().toISOString() },
+  { id: 'it_career', name: 'IT資格・キャリア情報', category: 'IT資格×キャリアアップ', content: '', updated_at: new Date().toISOString() },
+  { id: 'work_lifestyle', name: '女性の働き方・共働き・同居関連トレンド', category: 'マインド×体験談', content: '', updated_at: new Date().toISOString() },
+  { id: 'note_popular', name: 'Noteの人気記事・売れ筋コンテンツ調査', category: 'NOTE誘導', content: '', updated_at: new Date().toISOString() },
+  { id: 'affiliate_info', name: 'アフィリエイト案件の旬情報', category: '副収入×年収UP術', content: '', updated_at: new Date().toISOString() },
+  { id: 'platform_algorithm', name: 'X・Threads・Noteのアルゴリズム・仕様変更情報', category: '全柱共通', content: '', updated_at: new Date().toISOString() },
+  { id: 'seasonal_calendar', name: '季節・イベントカレンダー（翌月分）', category: '全柱共通', content: '', updated_at: new Date().toISOString() },
+  { id: 'viral_formats', name: 'バズ投稿フォーマット収集', category: '全柱共通', content: '', updated_at: new Date().toISOString() },
+  { id: 'gas_automation', name: 'GASを用いた業務効率化アイデアとヒントになる悩み', category: '副収入×年収UP術 / NOTE誘導', content: '', updated_at: new Date().toISOString() },
+  { id: 'overseas_trends', name: '海外の市場調査・トレンド調査', category: '全柱共通（先行トレンド把握）', content: '', updated_at: new Date().toISOString() },
+];
+
+/**
+ * 調査ノート取得
+ * GET /api/context/research-notes
+ */
+contextRouter.get('/research-notes', async (req, res) => {
+  try {
+    let data: ResearchNotes | null = null;
+
+    // Google Driveから読み込み
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          data = await driveService.loadJson<ResearchNotes>('Context', 'research-notes.json');
+        }
+      } catch (driveError) {
+        console.error('Failed to load research-notes from Drive:', driveError);
+      }
+    }
+
+    // フォールバック: ローカルファイル
+    if (!data) {
+      try {
+        const filePath = path.join(CONTEXT_DIR, 'research-notes.json');
+        const content = await fs.readFile(filePath, 'utf-8');
+        data = JSON.parse(content) as ResearchNotes;
+      } catch {
+        data = null;
+      }
+    }
+
+    // デフォルト値
+    if (!data) {
+      data = {
+        items: DEFAULT_RESEARCH_ITEMS,
+        updated_at: new Date().toISOString(),
+      };
+    }
+
+    // 新しい項目が追加された場合に対応
+    const existingIds = new Set(data.items.map(item => item.id));
+    for (const defaultItem of DEFAULT_RESEARCH_ITEMS) {
+      if (!existingIds.has(defaultItem.id)) {
+        data.items.push(defaultItem);
+      }
+    }
+
+    res.json({ status: 'success', data });
+  } catch (error) {
+    console.error('Get research-notes error:', error);
+    res.status(500).json({ status: 'error', error: '調査ノートの取得に失敗しました' });
+  }
+});
+
+/**
+ * 調査ノート更新（全項目）
+ * PUT /api/context/research-notes
+ */
+contextRouter.put('/research-notes', async (req, res) => {
+  try {
+    const { items } = req.body as { items: ResearchItem[] };
+
+    const data: ResearchNotes = {
+      items: items || DEFAULT_RESEARCH_ITEMS,
+      updated_at: new Date().toISOString(),
+    };
+
+    // ローカルに保存
+    await ensureContextDir();
+    const filePath = path.join(CONTEXT_DIR, 'research-notes.json');
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+
+    // Google Driveに保存
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          await driveService.saveJson('Context', 'research-notes.json', data);
+          console.log('✅ Research notes saved to Google Drive');
+        } else {
+          console.log('⚠️ Drive service not available (no tokens?)');
+        }
+      } catch (driveError) {
+        console.error('Failed to save research-notes to Drive:', driveError);
+      }
+    } else {
+      console.log('ℹ️ Google Drive disabled, saved locally only');
+    }
+
+    res.json({ status: 'success', data });
+  } catch (error) {
+    console.error('Update research-notes error:', error);
+    res.status(500).json({ status: 'error', error: '調査ノートの更新に失敗しました' });
+  }
+});
+
+/**
+ * 単一調査項目の更新
+ * PUT /api/context/research-notes/:id
+ */
+contextRouter.put('/research-notes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content } = req.body as { content: string };
+
+    // 現在のデータを取得
+    let data: ResearchNotes | null = null;
+
+    // Google Driveから読み込み
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          data = await driveService.loadJson<ResearchNotes>('Context', 'research-notes.json');
+        }
+      } catch (driveError) {
+        console.error('Failed to load research-notes from Drive:', driveError);
+      }
+    }
+
+    // フォールバック: ローカルファイル
+    if (!data) {
+      try {
+        const filePath = path.join(CONTEXT_DIR, 'research-notes.json');
+        const fileContent = await fs.readFile(filePath, 'utf-8');
+        data = JSON.parse(fileContent) as ResearchNotes;
+      } catch {
+        data = {
+          items: DEFAULT_RESEARCH_ITEMS,
+          updated_at: new Date().toISOString(),
+        };
+      }
+    }
+
+    // 該当項目を更新
+    const itemIndex = data.items.findIndex(item => item.id === id);
+    if (itemIndex >= 0) {
+      data.items[itemIndex].content = content;
+      data.items[itemIndex].updated_at = new Date().toISOString();
+    } else {
+      return res.status(404).json({ status: 'error', error: '調査項目が見つかりません' });
+    }
+
+    data.updated_at = new Date().toISOString();
+
+    // ローカルに保存
+    await ensureContextDir();
+    const filePath = path.join(CONTEXT_DIR, 'research-notes.json');
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+
+    // Google Driveに保存
+    if (isDriveEnabled()) {
+      try {
+        const driveService = await getDriveService(req);
+        if (driveService) {
+          await driveService.saveJson('Context', 'research-notes.json', data);
+          console.log('✅ Research note item saved to Google Drive');
+        }
+      } catch (driveError) {
+        console.error('Failed to save research-notes to Drive:', driveError);
+      }
+    }
+
+    res.json({ status: 'success', data: data.items[itemIndex] });
+  } catch (error) {
+    console.error('Update research-note item error:', error);
+    res.status(500).json({ status: 'error', error: '調査項目の更新に失敗しました' });
   }
 });

@@ -173,13 +173,13 @@ export interface CategorySettings {
   updated_at: string;
 }
 
-// 市場調査
+// 市場調査（後方互換性のため残す）
 export interface MarketResearch {
   content: string;               // 市場調査・トレンド情報
   updated_at: string;
 }
 
-// 競合分析
+// 競合分析（後方互換性のため残す）
 export interface CompetitorAnalysis {
   content: string;               // 競合分析情報
   updated_at: string;
@@ -188,6 +188,37 @@ export interface CompetitorAnalysis {
 // カスタム指示
 export interface CustomInstructions {
   content: string;               // AIへのカスタム指示
+  updated_at: string;
+}
+
+// 調査項目ID
+export type ResearchItemId =
+  | 'hsp_trends'              // HSP女性のリアルな悩みトレンド
+  | 'competitor_analysis'     // 競合アカウントの投稿パターン分析
+  | 'ai_news'                 // AI最新情報
+  | 'home_dx'                 // 家庭DX・スマート家電・時短ライフハック
+  | 'it_career'               // IT資格・キャリア情報
+  | 'work_lifestyle'          // 女性の働き方・共働き・同居関連
+  | 'note_popular'            // Noteの人気記事・売れ筋コンテンツ
+  | 'affiliate_info'          // アフィリエイト案件の旬情報
+  | 'platform_algorithm'      // X・Threads・Noteのアルゴリズム・仕様変更
+  | 'seasonal_calendar'       // 季節・イベントカレンダー
+  | 'viral_formats'           // バズ投稿フォーマット収集
+  | 'gas_automation'          // GASを用いた業務効率化アイデア
+  | 'overseas_trends';        // 海外の市場調査・トレンド調査
+
+// 調査項目
+export interface ResearchItem {
+  id: ResearchItemId;
+  name: string;                  // 調査項目名
+  category: string;              // 対応するコンテンツ柱
+  content: string;               // 調査内容
+  updated_at: string;
+}
+
+// 調査ノート（全項目をまとめたもの）
+export interface ResearchNotes {
+  items: ResearchItem[];
   updated_at: string;
 }
 
@@ -227,9 +258,11 @@ export interface PersonaList {
 
 // コンテキスト管理（全設定を統合したもの - カレンダー生成時に使用）
 export interface ContentContext {
-  market_research: string;       // 市場調査・トレンド
-  custom_instructions: string;   // カスタム指示
-  persona?: PersonaData;         // ペルソナ情報
+  categories?: CategoryConfig[];   // 投稿ジャンル
+  persona?: PersonaData;           // ペルソナ情報
+  research_notes?: ResearchItem[]; // 調査ノート（13項目）
+  custom_instructions: string;     // カスタム指示
+  my_account?: MyAccountInfo;      // マイアカウント情報
   updated_at: string;
 }
 

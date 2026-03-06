@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, RotateCcw, Save, User, Tags, Sparkles, Eye, BookOpen, FileText, Settings } from 'lucide-react';
-import type { CategoryConfig, MyAccountInfo } from '@contenthub/types';
+import { Plus, Trash2, RotateCcw, Save, User, Tags, Sparkles, Eye, BookOpen, FileText, Settings, Search, ChevronDown, ChevronRight } from 'lucide-react';
+import type { CategoryConfig, MyAccountInfo, ResearchItem, ResearchItemId } from '@contenthub/types';
 import { Header } from '@/components/shared/Header';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import {
@@ -20,12 +20,10 @@ import {
   type PersonaSettings,
 } from '@/hooks/api/usePersona';
 import {
-  useMarketResearch,
-  useUpdateMarketResearch,
   useCustomInstructions,
   useUpdateCustomInstructions,
-  useCompetitorAnalysis,
-  useUpdateCompetitorAnalysis,
+  useResearchNotes,
+  useUpdateResearchItem,
 } from '@/hooks/api/useContext';
 import {
   useMyAccount,
@@ -38,7 +36,7 @@ const COLORS = [
   '#14B8A6', '#6366F1', '#F97316', '#EF4444', '#84CC16',
 ];
 
-type SettingsTab = 'genres' | 'persona' | 'competitor-analysis' | 'market-research' | 'custom-instructions' | 'my-account';
+type SettingsTab = 'genres' | 'persona' | 'research-notes' | 'custom-instructions' | 'my-account';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('genres');
@@ -52,7 +50,7 @@ export default function SettingsPage() {
           <div className="mb-6">
             <h1 className="text-2xl font-bold tracking-tight mb-2">設定</h1>
             <p className="text-sm text-gray-600">
-              投稿ジャンル、ペルソナ、競合分析、市場調査、カスタム指示、マイアカウントを設定できます
+              投稿ジャンル、ペルソナ、調査ノート、カスタム指示、マイアカウントを設定できます
             </p>
           </div>
 
@@ -85,30 +83,17 @@ export default function SettingsPage() {
               ペルソナ
             </button>
             <button
-              onClick={() => setActiveTab('competitor-analysis')}
+              onClick={() => setActiveTab('research-notes')}
               className={`
                 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all
-                ${activeTab === 'competitor-analysis'
+                ${activeTab === 'research-notes'
                   ? 'bg-indigo-500 text-white shadow-sm'
                   : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
                 }
               `}
             >
-              <Eye className="w-4 h-4" />
-              競合分析
-            </button>
-            <button
-              onClick={() => setActiveTab('market-research')}
-              className={`
-                flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all
-                ${activeTab === 'market-research'
-                  ? 'bg-indigo-500 text-white shadow-sm'
-                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
-                }
-              `}
-            >
-              <BookOpen className="w-4 h-4" />
-              市場調査
+              <Search className="w-4 h-4" />
+              調査ノート
             </button>
             <button
               onClick={() => setActiveTab('custom-instructions')}
@@ -143,10 +128,8 @@ export default function SettingsPage() {
             <GenreSettings />
           ) : activeTab === 'persona' ? (
             <PersonaSettingsPanel />
-          ) : activeTab === 'competitor-analysis' ? (
-            <CompetitorAnalysisPanel />
-          ) : activeTab === 'market-research' ? (
-            <MarketResearchPanel />
+          ) : activeTab === 'research-notes' ? (
+            <ResearchNotesPanel />
           ) : activeTab === 'custom-instructions' ? (
             <CustomInstructionsPanel />
           ) : (
@@ -416,12 +399,14 @@ function PersonaSettingsPanel() {
   const [hasChanges, setHasChanges] = useState(false);
   const [newProblem, setNewProblem] = useState('');
   const [newInterest, setNewInterest] = useState('');
+  const [isNewPersona, setIsNewPersona] = useState(false);
 
   useEffect(() => {
     if (personaData) {
       setPersona(personaData);
       setPersonaName(personaData.name || '');
       setHasChanges(false);
+      setIsNewPersona(false);
     }
   }, [personaData]);
 
@@ -466,12 +451,18 @@ function PersonaSettingsPanel() {
     setHasChanges(true);
   };
 
-  // 保存処理（現在の設定を保存 + 一覧にも自動追加/更新）
+  // 保存処理（新規作成または更新）
   const handleSave = async () => {
-    if (!persona) return;
+    if (!persona || !personaName.trim()) return;
 
-    // APIが自動的に一覧への追加/更新も行う
-    await updateMutation.mutateAsync({ ...persona, name: personaName });
+    if (isNewPersona) {
+      // 新規追加
+      await addMutation.mutateAsync({ ...persona, name: personaName });
+      setIsNewPersona(false);
+    } else {
+      // 既存を更新
+      await updateMutation.mutateAsync({ ...persona, name: personaName });
+    }
 
     setHasChanges(false);
   };
@@ -488,6 +479,29 @@ function PersonaSettingsPanel() {
     });
     setPersonaName(savedPersona.name || '');
     setHasChanges(false);
+    setIsNewPersona(false);
+  };
+
+  // 新規ペルソナ作成
+  const handleCreateNewPersona = () => {
+    const newPersona: PersonaSettings = {
+      ageRange: '',
+      gender: '',
+      occupation: '',
+      problems: [],
+      interests: [],
+      personaExample: {
+        name: '',
+        age: 25,
+        job: '',
+        description: '',
+      },
+      updated_at: new Date().toISOString(),
+    };
+    setPersona(newPersona);
+    setPersonaName('');
+    setHasChanges(true);
+    setIsNewPersona(true);
   };
 
   // AIでペルソナ例を生成
@@ -601,7 +615,7 @@ function PersonaSettingsPanel() {
               onChange={(e) => setNewProblem(e.target.value)}
               placeholder="新しい悩みを追加"
               className="flex-1 px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm"
-              onKeyDown={(e) => e.key === 'Enter' && handleAddProblem()}
+              onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && handleAddProblem()}
             />
             <button
               onClick={handleAddProblem}
@@ -635,7 +649,7 @@ function PersonaSettingsPanel() {
               onChange={(e) => setNewInterest(e.target.value)}
               placeholder="新しい興味を追加"
               className="flex-1 px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm"
-              onKeyDown={(e) => e.key === 'Enter' && handleAddInterest()}
+              onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && handleAddInterest()}
             />
             <button
               onClick={handleAddInterest}
@@ -732,9 +746,13 @@ function PersonaSettingsPanel() {
         </div>
 
         {/* ペルソナ名と保存 */}
-        <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5 space-y-4">
+        <div className={`rounded-2xl border shadow-sm p-5 space-y-4 ${
+          isNewPersona ? 'bg-indigo-50/50 border-indigo-200' : 'bg-white border-gray-200/60'
+        }`}>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">ペルソナ名（保存用）</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              ペルソナ名（保存用）{isNewPersona && <span className="text-red-500">*</span>}
+            </label>
             <input
               type="text"
               value={personaName}
@@ -747,7 +765,13 @@ function PersonaSettingsPanel() {
             />
           </div>
 
-          {hasChanges && (
+          {isNewPersona && (
+            <p className="text-xs text-indigo-600">
+              新規ペルソナを作成中です。名前を入力して保存してください。
+            </p>
+          )}
+
+          {hasChanges && !isNewPersona && (
             <p className="text-xs text-amber-600">
               変更があります。保存してください。
             </p>
@@ -755,19 +779,19 @@ function PersonaSettingsPanel() {
 
           <button
             onClick={handleSave}
-            disabled={!hasChanges || updateMutation.isPending}
+            disabled={!hasChanges || !personaName.trim() || updateMutation.isPending || addMutation.isPending}
             className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white transition-colors text-sm font-medium ${
-              hasChanges
+              hasChanges && personaName.trim()
                 ? 'bg-indigo-500 hover:bg-indigo-600'
                 : 'bg-gray-300 cursor-not-allowed'
             }`}
           >
-            {updateMutation.isPending ? (
+            {(updateMutation.isPending || addMutation.isPending) ? (
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
               <Save className="w-4 h-4" />
             )}
-            保存
+            {isNewPersona ? '新規保存' : '保存'}
           </button>
         </div>
 
@@ -780,43 +804,61 @@ function PersonaSettingsPanel() {
 
         {/* 保存済みペルソナ一覧 */}
         <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">保存済みペルソナ一覧</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-gray-900">保存済みペルソナ一覧</h2>
+            <button
+              onClick={handleCreateNewPersona}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+            >
+              <Plus className="w-3 h-3" />
+              新規作成
+            </button>
+          </div>
           {isListLoading ? (
             <div className="flex items-center justify-center py-8">
               <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : personaListData?.personas && personaListData.personas.length > 0 ? (
             <div className="space-y-2">
-              {personaListData.personas.map((savedPersona) => (
-                <div
-                  key={savedPersona.id}
-                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {savedPersona.name || '名称未設定'}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {savedPersona.ageRange} / {savedPersona.gender} / {savedPersona.occupation}
-                    </p>
+              {personaListData.personas.map((savedPersona) => {
+                const isEditing = !isNewPersona && persona?.id === savedPersona.id;
+                return (
+                  <div
+                    key={savedPersona.id}
+                    className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${
+                      isEditing ? 'bg-indigo-50 border border-indigo-200' : 'bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium truncate ${isEditing ? 'text-indigo-900' : 'text-gray-900'}`}>
+                        {savedPersona.name || '名称未設定'}
+                        {isEditing && <span className="ml-2 text-xs text-indigo-600">（編集中）</span>}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {savedPersona.ageRange} / {savedPersona.gender} / {savedPersona.occupation}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleLoadPersona(savedPersona)}
+                      className={`p-2 rounded-lg transition-colors ${
+                        isEditing ? 'text-indigo-400 cursor-default' : 'text-indigo-600 hover:bg-indigo-50'
+                      }`}
+                      title="表示"
+                      disabled={isEditing}
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => savedPersona.id && handleDeletePersona(savedPersona.id)}
+                      disabled={deleteMutation.isPending}
+                      className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      title="削除"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handleLoadPersona(savedPersona)}
-                    className="p-2 rounded-lg text-indigo-600 hover:bg-indigo-50 transition-colors"
-                    title="表示"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => savedPersona.id && handleDeletePersona(savedPersona.id)}
-                    disabled={deleteMutation.isPending}
-                    className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                    title="削除"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <p className="text-sm text-gray-500 text-center py-4">
@@ -830,24 +872,50 @@ function PersonaSettingsPanel() {
   );
 }
 
-// 競合分析パネル
-function CompetitorAnalysisPanel() {
-  const { data: competitorAnalysisData, isLoading } = useCompetitorAnalysis();
-  const updateMutation = useUpdateCompetitorAnalysis();
+// 調査ノートパネル（13項目）
+function ResearchNotesPanel() {
+  const { data: researchNotesData, isLoading } = useResearchNotes();
+  const updateItemMutation = useUpdateResearchItem();
 
-  const [content, setContent] = useState('');
-  const [hasChanges, setHasChanges] = useState(false);
+  const [items, setItems] = useState<ResearchItem[]>([]);
+  const [expandedItems, setExpandedItems] = useState<Set<ResearchItemId>>(new Set());
+  const [editingItem, setEditingItem] = useState<ResearchItemId | null>(null);
+  const [editContent, setEditContent] = useState('');
 
   useEffect(() => {
-    if (competitorAnalysisData) {
-      setContent(competitorAnalysisData.content || '');
-      setHasChanges(false);
+    if (researchNotesData?.items) {
+      setItems(researchNotesData.items);
     }
-  }, [competitorAnalysisData]);
+  }, [researchNotesData]);
 
-  const handleSave = async () => {
-    await updateMutation.mutateAsync(content);
-    setHasChanges(false);
+  const toggleExpand = (id: ResearchItemId) => {
+    const newExpanded = new Set(expandedItems);
+    if (newExpanded.has(id)) {
+      newExpanded.delete(id);
+    } else {
+      newExpanded.add(id);
+    }
+    setExpandedItems(newExpanded);
+  };
+
+  const startEditing = (item: ResearchItem) => {
+    setEditingItem(item.id);
+    setEditContent(item.content);
+    // 自動的に展開
+    const newExpanded = new Set(expandedItems);
+    newExpanded.add(item.id);
+    setExpandedItems(newExpanded);
+  };
+
+  const cancelEditing = () => {
+    setEditingItem(null);
+    setEditContent('');
+  };
+
+  const saveItem = async (id: ResearchItemId) => {
+    await updateItemMutation.mutateAsync({ id, content: editContent });
+    setEditingItem(null);
+    setEditContent('');
   };
 
   if (isLoading) {
@@ -863,133 +931,134 @@ function CompetitorAnalysisPanel() {
       {/* 説明 */}
       <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
         <h3 className="text-sm font-medium text-indigo-800 mb-2">
-          競合分析とは？
+          調査ノートとは？
         </h3>
         <p className="text-sm text-indigo-700">
-          競合アカウントの特徴、強み、差別化ポイントなどを記録します。他のツールで分析した結果をここに貼り付けて管理できます。
+          コンテンツ作成に必要な13項目の調査結果を記録します。各項目はコンテンツ柱と紐づいており、カレンダー生成や投稿作成時に活用されます。
         </p>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
-        <h2 className="font-semibold text-gray-900 mb-1">競合分析</h2>
-        <p className="text-xs text-gray-500 mb-4">
-          競合アカウントの特徴、強み、差別化ポイント、参考にしたい点など
-        </p>
-        <textarea
-          value={content}
-          onChange={(e) => {
-            setContent(e.target.value);
-            setHasChanges(true);
-          }}
-          rows={15}
-          placeholder="例：&#10;【競合A：〇〇さん】&#10;・プラットフォーム：NOTE、X&#10;・フォロワー：X 1.2万人、NOTE月間5万PV&#10;・特徴：HSP×キャリア、落ち着いた文体&#10;・強み：有料note販売で月10万円以上&#10;・参考にしたい点：読者との距離感、共感の引き出し方&#10;&#10;【競合B：△△さん】&#10;・プラットフォーム：Threads、NOTE&#10;・特徴：家事効率化、明るいトーン&#10;・差別化ポイント：IT視点×HSP共感の掛け合わせで差別化"
-          className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm resize-none"
-        />
-      </div>
+      {/* 調査項目一覧 */}
+      <div className="space-y-3">
+        {items.map((item, index) => {
+          const isExpanded = expandedItems.has(item.id);
+          const isEditing = editingItem === item.id;
+          const hasContent = item.content && item.content.trim().length > 0;
 
-      {/* 保存ボタン */}
-      <div className="flex justify-end">
-        <button
-          onClick={handleSave}
-          disabled={!hasChanges || updateMutation.isPending}
-          className="flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-        >
-          {updateMutation.isPending ? (
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : (
-            <Save className="w-4 h-4" />
-          )}
-          保存
-        </button>
+          return (
+            <div
+              key={item.id}
+              className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden"
+            >
+              {/* ヘッダー */}
+              <div
+                className="flex items-center gap-3 px-5 py-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => toggleExpand(item.id)}
+              >
+                <span className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-xs font-medium">
+                  {index + 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-medium text-gray-900 text-sm">{item.name}</h3>
+                  <p className="text-xs text-gray-500 truncate">{item.category}</p>
+                </div>
+                {hasContent && (
+                  <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
+                    記録あり
+                  </span>
+                )}
+                {isExpanded ? (
+                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                ) : (
+                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                )}
+              </div>
+
+              {/* コンテンツ */}
+              {isExpanded && (
+                <div className="px-5 pb-5 border-t border-gray-100">
+                  <div className="pt-4">
+                    {isEditing ? (
+                      <div className="space-y-3">
+                        <textarea
+                          value={editContent}
+                          onChange={(e) => setEditContent(e.target.value)}
+                          rows={10}
+                          placeholder="調査結果を入力してください..."
+                          className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm resize-none"
+                          autoFocus
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={cancelEditing}
+                            className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                          >
+                            キャンセル
+                          </button>
+                          <button
+                            onClick={() => saveItem(item.id)}
+                            disabled={updateItemMutation.isPending}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-lg text-sm hover:bg-indigo-600 disabled:opacity-50 transition-colors"
+                          >
+                            {updateItemMutation.isPending ? (
+                              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                              <Save className="w-4 h-4" />
+                            )}
+                            保存
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        {hasContent ? (
+                          <div className="space-y-3">
+                            <div className="p-3 bg-gray-50 rounded-xl">
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.content}</p>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-gray-400">
+                                更新: {new Date(item.updated_at).toLocaleString('ja-JP')}
+                              </p>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startEditing(item);
+                                }}
+                                className="px-3 py-1.5 text-xs text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                              >
+                                編集
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-6">
+                            <p className="text-sm text-gray-500 mb-3">まだ記録がありません</p>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startEditing(item);
+                              }}
+                              className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm hover:bg-indigo-100 transition-colors"
+                            >
+                              記録を追加
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* 最終更新日時 */}
-      {competitorAnalysisData?.updated_at && (
+      {researchNotesData?.updated_at && (
         <p className="text-xs text-gray-400 text-right">
-          最終更新: {new Date(competitorAnalysisData.updated_at).toLocaleString('ja-JP')}
-        </p>
-      )}
-    </div>
-  );
-}
-
-// 市場調査パネル
-function MarketResearchPanel() {
-  const { data: marketResearchData, isLoading } = useMarketResearch();
-  const updateMutation = useUpdateMarketResearch();
-
-  const [content, setContent] = useState('');
-  const [hasChanges, setHasChanges] = useState(false);
-
-  useEffect(() => {
-    if (marketResearchData) {
-      setContent(marketResearchData.content || '');
-      setHasChanges(false);
-    }
-  }, [marketResearchData]);
-
-  const handleSave = async () => {
-    await updateMutation.mutateAsync(content);
-    setHasChanges(false);
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* 説明 */}
-      <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
-        <h3 className="text-sm font-medium text-indigo-800 mb-2">
-          市場調査とは？
-        </h3>
-        <p className="text-sm text-indigo-700">
-          業界の動向、トレンド、競合分析の結果などを記録します。カレンダー生成時にAIへ渡され、より的確なコンテンツ提案に活用されます。
-        </p>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
-        <h2 className="font-semibold text-gray-900 mb-1">市場調査・トレンド分析</h2>
-        <p className="text-xs text-gray-500 mb-4">
-          業界の動向、注目されているトピック、季節イベント、競合の動きなど
-        </p>
-        <textarea
-          value={content}
-          onChange={(e) => {
-            setContent(e.target.value);
-            setHasChanges(true);
-          }}
-          rows={15}
-          placeholder="例：&#10;【トレンド】&#10;・2024年は「セルフケア」「マインドフルネス」がトレンド&#10;・HSP関連のnote記事が増加傾向&#10;・年末は「振り返り」「目標設定」系が伸びる&#10;&#10;【競合分析】&#10;・Aさん：HSP×キャリア、落ち着いた文体、有料note販売&#10;・Bさん：家事効率化、明るいトーン、Threads強い&#10;・差別化：IT視点×HSP共感の掛け合わせ"
-          className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-indigo-300 focus:ring focus:ring-indigo-200/50 text-sm resize-none"
-        />
-      </div>
-
-      {/* 保存ボタン */}
-      <div className="flex justify-end">
-        <button
-          onClick={handleSave}
-          disabled={!hasChanges || updateMutation.isPending}
-          className="flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-        >
-          {updateMutation.isPending ? (
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : (
-            <Save className="w-4 h-4" />
-          )}
-          保存
-        </button>
-      </div>
-
-      {/* 最終更新日時 */}
-      {marketResearchData?.updated_at && (
-        <p className="text-xs text-gray-400 text-right">
-          最終更新: {new Date(marketResearchData.updated_at).toLocaleString('ja-JP')}
+          全体の最終更新: {new Date(researchNotesData.updated_at).toLocaleString('ja-JP')}
         </p>
       )}
     </div>
